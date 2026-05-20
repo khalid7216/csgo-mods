@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { detectCSGOPath, saveCSGOPath, loadCSGOPath } = require('../utils/csgoPath');
-const { getGameBananaMaps, downloadMap, installMap, getInstalledMods, removeMod } = require('../utils/modManager');
+const { getGameBananaMaps, getGameBananaSkins, downloadMap, downloadSkin, installMap, getInstalledMods, removeMod } = require('../utils/modManager');
 const { createVMT, createVPK, installSkin } = require('../utils/skinManager');
 const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO } = require('../utils/lanServer');
 const { fetchPlayerStats, parseStats, getCachedStats } = require('../utils/statsParser');
@@ -110,10 +110,22 @@ ipcMain.handle('fetch-gamebanana-maps', async (_, query = '', page = 1) => {
   return await getGameBananaMaps(query, page);
 });
 
+ipcMain.handle('fetch-gamebanana-skins', async (_, query = '', page = 1) => {
+  return await getGameBananaSkins(query, page);
+});
+
 ipcMain.handle('download-map', async (_, map) => {
   const config = loadConfig();
   if (!config.csgoPath) throw new Error('CSGO path not set');
   return await downloadMap(map, config.csgoPath, (progress) => {
+    mainWindow.webContents.send('download-progress', progress);
+  });
+});
+
+ipcMain.handle('download-skin', async (_, skin) => {
+  const config = loadConfig();
+  if (!config.csgoPath) throw new Error('CSGO path not set');
+  return await downloadSkin(skin, config.csgoPath, (progress) => {
     mainWindow.webContents.send('download-progress', progress);
   });
 });

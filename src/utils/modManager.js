@@ -4,6 +4,10 @@ const fs = require('fs');
 const path = require('path');
 
 const MODS_PATH = path.join(__dirname, '../../mods-cache/mods.json');
+const API_BASE = 'https://api.gamebanana.com';
+const CS_GAME_ID = 4660; // CS:GO GameBanana game ID
+
+const FIELDS = 'name,text,creator,Preview().sStructuredDataFullsizeUrl(),Url().sProfileUrl(),Url().sDownloadUrl(),date,views,likes,Files().aFiles(),Game().name,Category().name,RootCategory().name';
 
 function ensureModsFile() {
   if (!fs.existsSync(MODS_PATH)) {
@@ -20,30 +24,17 @@ function saveMods(mods) {
   fs.writeFileSync(MODS_PATH, JSON.stringify(mods, null, 2));
 }
 
-async function getGameBananaMaps(query = '', page = 1) {
+function apiRequest(url) {
   return new Promise((resolve, reject) => {
-    const searchQuery = query ? `&search_term=${encodeURIComponent(query)}` : '';
-    const url = `https://gamebanana.com/apiv11/Update/All?_nPerPage=20&_nPage=${page}&_aGameRow=Games& _idGameRow=4&_sSortBy=DateAdded${searchQuery}`;
-
     const client = url.startsWith('https') ? https : http;
     const req = client.get(url, { headers: { 'User-Agent': 'CSGO-Mod-Manager/1.0' } }, (res) => {
       let data = '';
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => {
         try {
-          const parsed = JSON.parse(data);
-          const maps = (parsed.records || []).map((item) => ({
-            id: item._idRow,
-            name: item._sName,
-            description: item._sText,
-            author: item._sSubmitterName,
-            image: item._aAttachments?.[0]?._sUrl620Auto || '',
-            downloadUrl: `https://gamebanana.com/download/${item._idRow}`,
-            dateAdded: item._tsDateAdded
-          }));
-          resolve({ maps, total: parsed._nRecordCount || 0, page });
+          resolve(JSON.parse(data));
         } catch (e) {
-          resolve({ maps: [], total: 0, page });
+          reject(e);
         }
       });
     });
@@ -52,20 +43,139 @@ async function getGameBananaMaps(query = '', page = 1) {
   });
 }
 
-async function downloadMap(map, csgoPath, onProgress) {
+function parseMod(id, data) {
+  const files = data['Files().aFiles()'] || {};
+  const firstFile = Object.values(files)[0] || {};
+  return {
+    id,
+    name: data.name || '',
+    description: (data.text || '').replace(/<[^>]*>/g, ''),
+    author: data.creator || '',
+    image: data['Preview().sStructuredDataFullsizeUrl()'] || '',
+    downloadUrl: data['Url().sDownloadUrl()'] || `https://gamebanana.com/mods/download/${id}`,
+    profileUrl: data['Url().sProfileUrl()'] || `https://gamebanana.com/mods/${id}`,
+    dateAdded: data.date || 0,
+    views: data.views || 0,
+    likes: data.likes || 0,
+    game: data['Game().name'] || '',
+    category: data['Category().name'] || '',
+    rootCategory: data['RootCategory().name'] || '',
+    files: Object.values(files).map(f => ({
+      name: f._sFile,
+      size: f._nFilesize,
+      url: f._sDownloadUrl
+    }))
+  };
+}
+
+async function fetchModData(ids) {
+  const results = [];
+  for (const id of ids) {
+    try {
+      const url = `${API_BASE}/Core/Item/Data?itemtype=Mod&itemid=${id}&fields=${FIELDS}&return_object=1`;
+      const data = await apiRequest(url);
+      if (data && data.name) {
+        results.push(parseMod(id, data));
+      }
+    } catch (e) {
+      console.error(`Failed to fetch mod ${id}:`, e.message);
+    }
+  }
+  return results;
+}
+
+async function getGameBananaMaps(query = '', page = 1) {
+  try {
+    const url = `${API_BASE}/Core/List/New?itemtype=Mod&gameid=${CS_GAME_ID}&page=${page}`;
+    const ids = await apiRequest(url);
+
+    const modIds = (ids || []).filter(item => item[0] === 'Mod').map(item => item[1]);
+
+    if (modIds.length === 0) return { maps: [], total: 0, page };
+
+    const allMods = await fetchModData(modIds);
+    let maps = allMods.filter(m =>
+      m.rootCategory === 'Maps' || m.category === 'Maps'
+    );
+
+    if (query) {
+      const q = query.toLowerCase();
+      maps = maps.filter(m =>
+        m.name.toLowerCase().includes(q) ||
+        m.description.toLowerCase().includes(q)
+      );
+    }
+
+    return { maps, total: maps.length, page };
+  } catch (e) {
+    console.error('Maps fetch error:', e);
+    return { maps: [], total: 0, page };
+  }
+}
+
+async function getGameBananaSkins(query = '', page = 1) {
+  try {
+    const url = `${API_BASE}/Core/List/New?itemtype=Mod&gameid=${CS_GAME_ID}&page=${page}`;
+    const ids = await apiRequest(url);
+
+    const modIds = (ids || []).filter(item => item[0] === 'Mod').map(item => item[1]);
+
+    if (modIds.length === 0) return { skins: [], total: 0, page };
+
+    const allMods = await fetchModData(modIds);
+    let skins = allMods.filter(m =>
+      m.rootCategory === 'Skins' || m.category === 'Skins' ||
+      m.rootCategory === 'Weps' || m.category === 'Weps'
+    );
+
+    if (query) {
+      const q = query.toLowerCase();
+      skins = skins.filter(m =>
+        m.name.toLowerCase().includes(q) ||
+        m.description.toLowerCase().includes(q)
+      );
+    }
+
+    return { skins, total: skins.length, page };
+  } catch (e) {
+    console.error('Skins fetch error:', e);
+    return { skins: [], total: 0, page };
+  }
+}
+
+async function getGameBananaItem(itemid) {
+  try {
+    const url = `${API_BASE}/Core/Item/Data?itemtype=Mod&itemid=${itemid}&fields=${FIELDS}&return_object=1`;
+    const data = await apiRequest(url);
+    return parseMod(itemid, data);
+  } catch (e) {
+    console.error('Item fetch error:', e);
+    return null;
+  }
+}
+
+async function downloadFile(item, csgoPath, onProgress, type = 'map') {
   return new Promise((resolve, reject) => {
-    const mapsDir = path.join(csgoPath, 'maps');
-    if (!fs.existsSync(mapsDir)) fs.mkdirSync(mapsDir, { recursive: true });
+    const dir = type === 'map'
+      ? path.join(csgoPath, 'maps')
+      : path.join(csgoPath, 'csgo', 'materials', 'models', 'weapons', 'custom');
 
-    const fileName = `${map.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.bsp`;
-    const filePath = path.join(mapsDir, fileName);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    const url = map.downloadUrl;
-    const client = url.startsWith('https') ? https : http;
+    const fileName = `${item.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${item.id}`;
+    const filePath = path.join(dir, fileName);
 
-    const req = client.get(url, { headers: { 'User-Agent': 'CSGO-Mod-Manager/1.0' } }, (res) => {
+    const downloadUrl = item.files?.[0]?.url || item.downloadUrl;
+    const client = downloadUrl.startsWith('https') ? https : http;
+
+    const req = client.get(downloadUrl, { headers: { 'User-Agent': 'CSGO-Mod-Manager/1.0' } }, (res) => {
       if (res.statusCode === 302 || res.statusCode === 301) {
-        downloadMap({ ...map, downloadUrl: res.headers.location }, csgoPath, onProgress).then(resolve).catch(reject);
+        downloadFile({ ...item, downloadUrl: res.headers.location }, csgoPath, onProgress, type).then(resolve).catch(reject);
+        return;
+      }
+
+      if (res.statusCode !== 200) {
+        reject(new Error(`Download failed with status ${res.statusCode}`));
         return;
       }
 
@@ -85,11 +195,13 @@ async function downloadMap(map, csgoPath, onProgress) {
       fileStream.on('finish', () => {
         fileStream.close();
         const mods = getMods();
-        mods.maps.push({
-          id: map.id,
-          name: map.name,
+        const modType = type === 'map' ? 'maps' : 'skins';
+        mods[modType].push({
+          id: item.id,
+          name: item.name,
           fileName,
           filePath,
+          profileUrl: item.profileUrl,
           installedAt: new Date().toISOString()
         });
         saveMods(mods);
@@ -100,6 +212,14 @@ async function downloadMap(map, csgoPath, onProgress) {
     req.on('error', reject);
     req.end();
   });
+}
+
+async function downloadMap(map, csgoPath, onProgress) {
+  return downloadFile(map, csgoPath, onProgress, 'map');
+}
+
+async function downloadSkin(skin, csgoPath, onProgress) {
+  return downloadFile(skin, csgoPath, onProgress, 'skin');
 }
 
 async function installMap(mapPath, csgoPath) {
@@ -140,4 +260,13 @@ async function removeMod(modId, modType) {
   return { success: true };
 }
 
-module.exports = { getGameBananaMaps, downloadMap, installMap, getInstalledMods, removeMod };
+module.exports = {
+  getGameBananaMaps,
+  getGameBananaSkins,
+  getGameBananaItem,
+  downloadMap,
+  downloadSkin,
+  installMap,
+  getInstalledMods,
+  removeMod
+};
