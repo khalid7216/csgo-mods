@@ -1,0 +1,51 @@
+{
+  "name": "csgo-mod-manager",
+  "version": "1.0.0",
+  "description": "CSGO Mod Manager - Maps, Skins, LAN Server, Stats",
+  "main": "src/main/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
+    "dev:react": "vite src/renderer",
+    "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
+    "build": "vite build src/renderer && electron-builder",
+    "build:react": "vite build src/renderer",
+    "preview": "vite preview src/renderer"
+  },
+  "build": {
+    "appId": "com.csgomodmanager.app",
+    "productName": "CSGO Mod Manager",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.17",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^28.1.4",
+    "electron-builder": "^24.9.1",
+    "postcss": "^8.4.33",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.3",
+    "tailwindcss": "^3.4.1",
+    "vite": "^5.0.12",
+    "wait-on": "^7.2.0"
+  }
+}

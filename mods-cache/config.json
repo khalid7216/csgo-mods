@@ -1,0 +1,9 @@
+{
+  "csgoPath": "",
+  "steamApiKey": "",
+  "serverConfig": {
+    "port": 27015,
+    "maxPlayers": 16,
+    "hostname": "CSGO Mod Manager Server"
+  }
+}
