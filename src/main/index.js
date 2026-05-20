@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { detectCSGOPath, saveCSGOPath, loadCSGOPath } = require('../utils/csgoPath');
+const { detectCSGOPath, validateCSGOPath, saveCSGOPath, loadCSGOPath } = require('../utils/csgoPath');
 const { getGameBananaMaps, getGameBananaSkins, downloadMap, downloadSkin, installMap, getInstalledMods, removeMod } = require('../utils/modManager');
 const { createVMT, createVPK, installSkin } = require('../utils/skinManager');
 const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO } = require('../utils/lanServer');
@@ -80,7 +80,8 @@ function createWindow() {
           "script-src 'self' 'unsafe-inline'; " +
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
           "img-src 'self' data: https: blob:; " +
-          "connect-src 'self' https://api.gamebanana.com https://gamebanana.com https://api.steampowered.com; " +
+          "media-src 'self' https://res.cloudinary.com; " +
+          "connect-src 'self' https://api.gamebanana.com https://gamebanana.com https://api.steampowered.com https://res.cloudinary.com; " +
           "font-src 'self' https://fonts.gstatic.com;"
         ]
       }
@@ -97,9 +98,21 @@ function createWindow() {
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173');
+    mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/dist/index.html'));
   }
+
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.shift && input.key === 'I') {
+      mainWindow.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+    if (input.key === 'F12') {
+      mainWindow.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+  });
 }
 
 app.whenReady().then(() => {
@@ -119,6 +132,10 @@ app.on('window-all-closed', () => {
 // IPC Handlers
 ipcMain.handle('detect-csgo-path', async () => {
   return await detectCSGOPath();
+});
+
+ipcMain.handle('validate-csgo-path', async (_, csgoPath) => {
+  return validateCSGOPath(csgoPath);
 });
 
 ipcMain.handle('select-csgo-path', async () => {
@@ -283,12 +300,21 @@ ipcMain.handle('stop-server', async () => {
 ipcMain.handle('get-server-status', () => getServerStatus(serverProcess));
 
 ipcMain.handle('launch-csgo', async (_, flags) => {
-  if (flags && typeof flags !== 'string') {
-    throw new Error('Invalid flags');
-  }
   const config = loadConfig();
   if (!config.csgoPath) throw new Error('CSGO path not set');
-  return await launchCSGO(config.csgoPath, flags);
+  
+  const validation = validateCSGOPath(config.csgoPath);
+  if (!validation.valid) throw new Error('Invalid CSGO path');
+  
+  // Accept both string and array formats
+  let flagArray = [];
+  if (typeof flags === 'string') {
+    flagArray = flags.split(' ').filter(f => f);
+  } else if (Array.isArray(flags)) {
+    flagArray = flags;
+  }
+  
+  return await launchCSGO(config.csgoPath, flagArray);
 });
 
 ipcMain.handle('fetch-player-stats', async (_, steamId, apiKey) => {

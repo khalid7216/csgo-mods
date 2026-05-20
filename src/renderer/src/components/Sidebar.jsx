@@ -36,12 +36,20 @@ const navItems = [
 
 export default function Sidebar({ csgoPath }) {
   const location = useLocation();
+  
+  const getStatusText = () => {
+    if (!csgoPath) return 'No CSGO Path';
+    const folderName = csgoPath.split('\\').pop() || csgoPath.split('/').pop();
+    return `CSGO Found ✓ (${folderName})`;
+  };
 
   return (
       <aside className="w-64 bg-dark-900 border-r border-dark-800 flex flex-col bg-cover bg-center bg-no-repeat" style={{ backgroundImage: 'url(https://res.cloudinary.com/dwo1whvr8/image/upload/v1779262034/sidebar_image_clhgz6.jpg)' }}>
       <div className="p-6 border-b border-dark-800">
         <h1 className="text-xl font-bold text-primary-400">CSGO Mod Manager</h1>
-        <p className="text-xs text-dark-500 mt-1 truncate" title={csgoPath}>{csgoPath ? 'CSGO Connected' : 'No CSGO Path'}</p>
+        <p className={`text-xs mt-1 truncate ${csgoPath ? 'text-green-400' : 'text-dark-500'}`} title={csgoPath}>
+          {getStatusText()}
+        </p>
       </div>
       <nav className="flex-1 p-4 space-y-1">
         {navItems.map(({ path, label, Icon }) => (

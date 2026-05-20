@@ -1,6 +1,7 @@
 {
   "name": "csgo-mod-manager",
   "version": "1.0.0",
+  "author": "Your Name",
   "description": "CSGO Mod Manager - Maps, Skins, LAN Server, Stats",
   "main": "src/main/index.js",
   "scripts": {
@@ -14,6 +15,7 @@
   "build": {
     "appId": "com.csgomodmanager.app",
     "productName": "CSGO Mod Manager",
+    "afterSign": null,
     "directories": {
       "output": "dist"
     },
@@ -22,13 +24,14 @@
       "package.json"
     ],
     "win": {
-      "target": "nsis",
+      "target": ["portable", "dir"],
       "icon": "public/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    }
+    },
+    "asar": true
   },
   "dependencies": {
     "electron-updater": "^6.1.7"
@@ -47,7 +50,7 @@
     "react-router-dom": "^6.21.3",
     "sharp": "^0.34.5",
     "tailwindcss": "^3.4.1",
-    "vite": "^8.0.13",
+    "vite": "^7.3.3",
     "wait-on": "^7.2.0"
   }
 }

@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   detectCSGOPath: () => ipcRenderer.invoke('detect-csgo-path'),
+  validateCSGOPath: (path) => ipcRenderer.invoke('validate-csgo-path', path),
   selectCSGOPath: () => ipcRenderer.invoke('select-csgo-path'),
   saveCSGOPath: (path) => ipcRenderer.invoke('save-csgo-path', path),
   loadConfig: () => ipcRenderer.invoke('load-config'),

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function SettingsPage({ config, setConfig, addToast }) {
   const [csgoPath, setCSGOPath] = useState(config.csgoPath || '');
@@ -9,13 +9,50 @@ export default function SettingsPage({ config, setConfig, addToast }) {
     hostname: 'CSGO Mod Manager Server'
   });
   const [detecting, setDetecting] = useState(false);
+  const [pathStatus, setPathStatus] = useState(null);
+
+  useEffect(() => {
+    if (config.csgoPath) {
+      validatePath(config.csgoPath);
+    } else {
+      setPathStatus(null);
+    }
+  }, [config.csgoPath]);
+
+  const validatePath = async (path) => {
+    if (!path) {
+      setPathStatus(null);
+      return;
+    }
+    try {
+      const result = await window.electronAPI.validateCSGOPath(path);
+      setPathStatus(result);
+    } catch {
+      setPathStatus({ valid: false, error: 'Validation failed' });
+    }
+  };
+
+  const handlePathChange = (value) => {
+    setCSGOPath(value);
+    validatePath(value);
+  };
+
+  const handleClearPath = async () => {
+    setCSGOPath('');
+    setPathStatus(null);
+    const newConfig = { ...config, csgoPath: '' };
+    await window.electronAPI.saveConfig(newConfig);
+    setConfig(newConfig);
+    addToast('CSGO path cleared', 'info');
+  };
 
   const handleDetectCSGO = async () => {
     setDetecting(true);
     try {
-      const path = await window.electronAPI.detectCSGOPath();
-      if (path) {
-        setCSGOPath(path);
+      const detectedPath = await window.electronAPI.detectCSGOPath();
+      if (detectedPath) {
+        setCSGOPath(detectedPath);
+        validatePath(detectedPath);
         addToast('CSGO path detected!', 'success');
       } else {
         addToast('CSGO not found. Use manual select.', 'warning');
@@ -30,11 +67,17 @@ export default function SettingsPage({ config, setConfig, addToast }) {
     const path = await window.electronAPI.selectCSGOPath();
     if (path) {
       setCSGOPath(path);
+      validatePath(path);
       addToast('CSGO path selected', 'success');
     }
   };
 
   const handleSave = async () => {
+    if (pathStatus && !pathStatus.valid) {
+      addToast('Invalid CSGO path. Please fix before saving.', 'error');
+      return;
+    }
+
     const newConfig = {
       ...config,
       csgoPath,
@@ -71,12 +114,21 @@ export default function SettingsPage({ config, setConfig, addToast }) {
               <input
                 type="text"
                 value={csgoPath}
-                onChange={(e) => setCSGOPath(e.target.value)}
-                placeholder="C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive"
+                onChange={(e) => handlePathChange(e.target.value)}
+                placeholder="C:\Program Files (x86)\Steam\steamapps\common\csgo legacy"
                 className="flex-1 bg-dark-800 border border-dark-700 rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500 font-mono text-sm"
               />
             </div>
-            <div className="flex gap-3">
+            {pathStatus && (
+              <div className={`text-sm ${pathStatus.valid ? 'text-green-400' : 'text-red-400'}`}>
+                {pathStatus.valid ? (
+                  <span>✓ CSGO Found - {pathStatus.folderName}</span>
+                ) : (
+                  <span>✗ {pathStatus.error}</span>
+                )}
+              </div>
+            )}
+            <div className="flex gap-3 flex-wrap">
               <button
                 onClick={handleDetectCSGO}
                 disabled={detecting}
@@ -90,6 +142,14 @@ export default function SettingsPage({ config, setConfig, addToast }) {
               >
                 Browse
               </button>
+              {csgoPath && (
+                <button
+                  onClick={handleClearPath}
+                  className="bg-red-600/20 hover:bg-red-600/30 text-red-400 px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                  Clear Path
+                </button>
+              )}
             </div>
           </div>
         </div>

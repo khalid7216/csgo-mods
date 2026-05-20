@@ -16,7 +16,17 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
-    window.electronAPI.loadConfig().then(setConfig);
+    window.electronAPI.loadConfig().then(async (loadedConfig) => {
+      if (loadedConfig && loadedConfig.csgoPath) {
+        const validation = await window.electronAPI.validateCSGOPath(loadedConfig.csgoPath);
+        if (!validation.valid) {
+          // Clear invalid path from config
+          loadedConfig.csgoPath = '';
+          await window.electronAPI.saveConfig(loadedConfig);
+        }
+      }
+      setConfig(loadedConfig);
+    });
 
     window.electronAPI.onToast((data) => {
       addToast(data.message, data.type);

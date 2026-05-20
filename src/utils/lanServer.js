@@ -88,7 +88,41 @@ mp_restartgame 1
 
 let serverProcess = null;
 
+function isSteamRunning() {
+  return new Promise((resolve) => {
+    exec('tasklist /FI "IMAGENAME eq Steam.exe" /NH', (error, stdout) => {
+      if (error) {
+        resolve(false);
+        return;
+      }
+      resolve(stdout.toLowerCase().includes('steam.exe'));
+    });
+  });
+}
+
+function findSteamDir(csgoPath) {
+  let current = csgoPath;
+  for (let i = 0; i < 10; i++) {
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    if (fs.existsSync(path.join(parent, 'Steam.exe'))) {
+      return parent;
+    }
+    current = parent;
+  }
+  const fallback = 'C:\\Program Files (x86)\\Steam';
+  if (fs.existsSync(path.join(fallback, 'Steam.exe'))) {
+    return fallback;
+  }
+  return null;
+}
+
 async function startServer(csgoPath, config, onOutput) {
+  const steamRunning = await isSteamRunning();
+  if (!steamRunning) {
+    throw new Error('Please open Steam first. SRCDS requires the Steam client to be running.');
+  }
+
   const srcdsPath = path.join(csgoPath, 'srcds.exe');
   const altPath = path.join(csgoPath, 'bin', 'srcds.exe');
 
@@ -100,16 +134,30 @@ async function startServer(csgoPath, config, onOutput) {
   createServerCFG(csgoPath, config);
   await openFirewallPort(config.port || 27015);
 
+  const steamDir = findSteamDir(csgoPath);
+  const port = config.port || 27015;
+  const maxPlayers = config.maxPlayers || 16;
+  const map = config.map || 'de_dust2';
+
   const args = [
     '-game', 'csgo',
-    '+map', config.map || 'de_dust2',
-    '+maxplayers', String(config.maxPlayers || 16),
-    '+sv_lan', '1',
-    '+sv_pure', '0',
-    '-port', String(config.port || 27015),
     '-console',
+    '-usercon',
+    '-insecure',
+    '-nobreakpad',
+    '+game_type', '0',
+    '+game_mode', '1',
+    '+mapgroup', 'mg_active',
+    '+map', map,
+    '-port', String(port),
+    '+maxplayers', String(maxPlayers),
+    '+sv_lan', '1',
     '+servercfgfile', 'server.cfg'
   ];
+
+  if (steamDir) {
+    args.push('-steam_dir', steamDir);
+  }
 
   serverProcess = spawn(exePath, args, { cwd: path.dirname(exePath), stdio: ['pipe', 'pipe', 'pipe'] });
 

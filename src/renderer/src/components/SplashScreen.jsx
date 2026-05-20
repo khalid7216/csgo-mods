@@ -6,10 +6,21 @@ export default function SplashScreen({ onFinish }) {
   const [fading, setFading] = useState(false);
   const [showOverlay, setShowOverlay] = useState(true);
   const [videoError, setVideoError] = useState(false);
+  const [videoLoaded, setVideoLoaded] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowOverlay(false), 3000);
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video) {
+      video.play().catch(err => {
+        console.error('Video play failed:', err);
+        setVideoError(true);
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -42,9 +53,18 @@ export default function SplashScreen({ onFinish }) {
         <video
           ref={videoRef}
           autoPlay
+          muted
+          loop
           playsInline
           className="absolute inset-0 w-full h-full object-cover"
-          onError={() => setVideoError(true)}
+          onError={(e) => {
+            console.error('Video error:', e);
+            setVideoError(true);
+          }}
+          onLoadedData={() => {
+            console.log('Video loaded successfully');
+            setVideoLoaded(true);
+          }}
           onEnded={() => {
             setFading(true);
             setTimeout(() => {
