@@ -49,7 +49,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-dark-950 bg-cover bg-no-repeat" style={{ backgroundImage: 'url(/dashboard-bg.jpg)', backgroundPosition: 'center 25%' }}>
+    <div className="flex h-screen bg-dark-950 bg-cover bg-no-repeat" style={{ backgroundImage: 'url(https://res.cloudinary.com/dwo1whvr8/image/upload/v1779262033/dashboard-bg.jpg_bqifwj.jpg)', backgroundPosition: 'center 25%' }}>
       <div className="absolute inset-0 bg-dark-950/80"></div>
       <div className="relative z-10 flex w-full h-full">
         <Sidebar csgoPath={config.csgoPath} />

@@ -38,7 +38,7 @@ export default function Sidebar({ csgoPath }) {
   const location = useLocation();
 
   return (
-      <aside className="w-64 bg-dark-900 border-r border-dark-800 flex flex-col bg-cover bg-center bg-no-repeat" style={{ backgroundImage: 'url(/sidebar-bg.jpg)' }}>
+      <aside className="w-64 bg-dark-900 border-r border-dark-800 flex flex-col bg-cover bg-center bg-no-repeat" style={{ backgroundImage: 'url(https://res.cloudinary.com/dwo1whvr8/image/upload/v1779262034/sidebar_image_clhgz6.jpg)' }}>
       <div className="p-6 border-b border-dark-800">
         <h1 className="text-xl font-bold text-primary-400">CSGO Mod Manager</h1>
         <p className="text-xs text-dark-500 mt-1 truncate" title={csgoPath}>{csgoPath ? 'CSGO Connected' : 'No CSGO Path'}</p>

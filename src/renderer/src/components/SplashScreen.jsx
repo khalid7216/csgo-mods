@@ -53,7 +53,7 @@ export default function SplashScreen({ onFinish }) {
             }, 500);
           }}
         >
-          <source src="/csgomp4.mp4" type="video/mp4" />
+          <source src="https://res.cloudinary.com/dwo1whvr8/video/upload/v1779261825/csgomp4.mp4_u4tf6h.mp4" type="video/mp4" />
         </video>
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-dark-950 via-dark-900 to-primary-900/30"></div>
