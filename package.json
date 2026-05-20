@@ -5,10 +5,10 @@
   "main": "src/main/index.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
-    "dev:react": "vite src/renderer",
+    "dev:react": "cd src/renderer && vite",
     "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
-    "build": "vite build src/renderer && electron-builder",
-    "build:react": "vite build src/renderer",
+    "build": "cd src/renderer && vite build && cd ../.. && electron-builder",
+    "build:react": "cd src/renderer && vite build",
     "preview": "vite preview src/renderer"
   },
   "build": {

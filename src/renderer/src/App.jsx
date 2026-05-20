@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
+import SplashScreen from './components/SplashScreen';
 import MapsPage from './pages/MapsPage';
 import SkinsPage from './pages/SkinsPage';
 import InstalledModsPage from './pages/InstalledModsPage';
@@ -10,6 +11,7 @@ import SettingsPage from './pages/SettingsPage';
 import Toast from './components/Toast';
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
   const [config, setConfig] = useState(null);
   const [toasts, setToasts] = useState([]);
 
@@ -31,6 +33,10 @@ export default function App() {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
   };
 
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
   if (!config) {
     return (
       <div className="flex items-center justify-center h-screen bg-dark-950">
@@ -43,9 +49,11 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-dark-950">
-      <Sidebar csgoPath={config.csgoPath} />
-      <main className="flex-1 overflow-y-auto p-6">
+    <div className="flex h-screen bg-dark-950 bg-cover bg-no-repeat" style={{ backgroundImage: 'url(/dashboard-bg.jpg)', backgroundPosition: 'center 25%' }}>
+      <div className="absolute inset-0 bg-dark-950/80"></div>
+      <div className="relative z-10 flex w-full h-full">
+        <Sidebar csgoPath={config.csgoPath} />
+        <main className="flex-1 overflow-y-auto p-6">
         <Routes>
           <Route path="/" element={<Navigate to="/maps" replace />} />
           <Route path="/maps" element={<MapsPage addToast={addToast} />} />
@@ -55,8 +63,9 @@ export default function App() {
           <Route path="/stats" element={<StatsPage config={config} addToast={addToast} />} />
           <Route path="/settings" element={<SettingsPage config={config} setConfig={setConfig} addToast={addToast} />} />
         </Routes>
-      </main>
-      <Toast toasts={toasts} />
+        </main>
+        <Toast toasts={toasts} />
+      </div>
     </div>
   );
 }

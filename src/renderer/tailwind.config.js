@@ -1,8 +1,11 @@
-/** @type {import('tailwindcss').Config} */
-export default {
+const path = require('path');
+
+const rendererDir = __dirname;
+
+module.exports = {
   content: [
-    './index.html',
-    './src/**/*.{js,ts,jsx,tsx}'
+    path.join(rendererDir, 'index.html'),
+    path.join(rendererDir, 'src', '**', '*.{js,jsx,ts,tsx}')
   ],
   theme: {
     extend: {
