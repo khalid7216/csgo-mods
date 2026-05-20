@@ -6,6 +6,18 @@ const { getGameBananaMaps, getGameBananaSkins, downloadMap, downloadSkin, instal
 const { createVMT, createVPK, installSkin } = require('../utils/skinManager');
 const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO } = require('../utils/lanServer');
 const { fetchPlayerStats, parseStats, getCachedStats } = require('../utils/statsParser');
+const {
+  validatePath,
+  validateUrl,
+  validateSteamId,
+  validateApiKey,
+  validatePort,
+  validatePageSize,
+  validateQuery,
+  sanitizeFileName,
+  validateModType,
+  isSafePath
+} = require('../utils/security');
 
 const CONFIG_PATH = path.join(__dirname, '../../mods-cache/config.json');
 const MODS_PATH = path.join(__dirname, '../../mods-cache/mods.json');
@@ -49,10 +61,38 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false
     },
     icon: path.join(__dirname, '../../public/icon.ico'),
     title: 'CSGO Mod Manager'
+  });
+
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; " +
+          "script-src 'self' 'unsafe-inline'; " +
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+          "img-src 'self' data: https: blob:; " +
+          "connect-src 'self' https://api.gamebanana.com https://gamebanana.com https://api.steampowered.com; " +
+          "font-src 'self' https://fonts.gstatic.com;"
+        ]
+      }
+    });
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    const validation = validateUrl(url);
+    if (validation.valid) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
   });
 
   if (process.env.NODE_ENV === 'development') {
@@ -87,12 +127,18 @@ ipcMain.handle('select-csgo-path', async () => {
     properties: ['openDirectory']
   });
   if (!result.canceled && result.filePaths.length > 0) {
-    return result.filePaths[0];
+    const selectedPath = result.filePaths[0];
+    if (isSafePath(selectedPath)) {
+      return selectedPath;
+    }
   }
   return null;
 });
 
 ipcMain.handle('save-csgo-path', async (_, csgoPath) => {
+  if (!isSafePath(csgoPath)) {
+    throw new Error('Invalid path');
+  }
   const config = loadConfig();
   config.csgoPath = csgoPath;
   saveConfig(config);
@@ -102,35 +148,71 @@ ipcMain.handle('save-csgo-path', async (_, csgoPath) => {
 ipcMain.handle('load-config', () => loadConfig());
 
 ipcMain.handle('save-config', (_, config) => {
+  if (!config || typeof config !== 'object') {
+    throw new Error('Invalid config');
+  }
   saveConfig(config);
   return true;
 });
 
 ipcMain.handle('fetch-gamebanana-maps', async (_, query = '', page = 1) => {
-  return await getGameBananaMaps(query, page);
+  const queryValidation = validateQuery(query);
+  if (!queryValidation.valid) {
+    throw new Error(queryValidation.error);
+  }
+  const pageValidation = validatePageSize(page);
+  if (!pageValidation.valid) {
+    throw new Error(pageValidation.error);
+  }
+  return await getGameBananaMaps(queryValidation.query, pageValidation.page);
 });
 
 ipcMain.handle('fetch-gamebanana-skins', async (_, query = '', page = 1) => {
-  return await getGameBananaSkins(query, page);
+  const queryValidation = validateQuery(query);
+  if (!queryValidation.valid) {
+    throw new Error(queryValidation.error);
+  }
+  const pageValidation = validatePageSize(page);
+  if (!pageValidation.valid) {
+    throw new Error(pageValidation.error);
+  }
+  return await getGameBananaSkins(queryValidation.query, pageValidation.page);
 });
 
 ipcMain.handle('download-map', async (_, map) => {
+  if (!map || !map.id || !map.name) {
+    throw new Error('Invalid map data');
+  }
   const config = loadConfig();
   if (!config.csgoPath) throw new Error('CSGO path not set');
+  const pathValidation = validatePath(config.csgoPath, path.resolve(config.csgoPath));
+  if (!pathValidation.valid) {
+    throw new Error(pathValidation.error);
+  }
   return await downloadMap(map, config.csgoPath, (progress) => {
     mainWindow.webContents.send('download-progress', progress);
   });
 });
 
 ipcMain.handle('download-skin', async (_, skin) => {
+  if (!skin || !skin.id || !skin.name) {
+    throw new Error('Invalid skin data');
+  }
   const config = loadConfig();
   if (!config.csgoPath) throw new Error('CSGO path not set');
+  const pathValidation = validatePath(config.csgoPath, path.resolve(config.csgoPath));
+  if (!pathValidation.valid) {
+    throw new Error(pathValidation.error);
+  }
   return await downloadSkin(skin, config.csgoPath, (progress) => {
     mainWindow.webContents.send('download-progress', progress);
   });
 });
 
 ipcMain.handle('install-map', async (_, mapPath) => {
+  if (!isSafePath(mapPath)) {
+    throw new Error('Invalid path');
+  }
   const config = loadConfig();
   if (!config.csgoPath) throw new Error('CSGO path not set');
   return await installMap(mapPath, config.csgoPath);
@@ -139,18 +221,34 @@ ipcMain.handle('install-map', async (_, mapPath) => {
 ipcMain.handle('get-installed-mods', () => getInstalledMods());
 
 ipcMain.handle('remove-mod', async (_, modId, modType) => {
-  return await removeMod(modId, modType);
+  const modTypeValidation = validateModType(modType);
+  if (!modTypeValidation.valid) {
+    throw new Error(modTypeValidation.error);
+  }
+  return await removeMod(modId, modTypeValidation.modType);
 });
 
 ipcMain.handle('create-vmt', async (_, vtfPath, skinName) => {
+  if (!isSafePath(vtfPath)) {
+    throw new Error('Invalid path');
+  }
+  if (!skinName || typeof skinName !== 'string' || skinName.length > 100) {
+    throw new Error('Invalid skin name');
+  }
   return await createVMT(vtfPath, skinName);
 });
 
 ipcMain.handle('create-vpk', async (_, folderPath) => {
+  if (!isSafePath(folderPath)) {
+    throw new Error('Invalid path');
+  }
   return await createVPK(folderPath);
 });
 
 ipcMain.handle('install-skin', async (_, skinData) => {
+  if (!skinData || !skinData.name) {
+    throw new Error('Invalid skin data');
+  }
   const config = loadConfig();
   if (!config.csgoPath) throw new Error('CSGO path not set');
   return await installSkin(skinData, config.csgoPath);
@@ -159,9 +257,16 @@ ipcMain.handle('install-skin', async (_, skinData) => {
 ipcMain.handle('get-local-ip', () => getLocalIP());
 
 ipcMain.handle('start-server', async (_, config) => {
+  if (!config || typeof config !== 'object') {
+    throw new Error('Invalid config');
+  }
+  const portValidation = validatePort(config.port);
+  if (!portValidation.valid) {
+    throw new Error(portValidation.error);
+  }
   const csgoConfig = loadConfig();
   if (!csgoConfig.csgoPath) throw new Error('CSGO path not set');
-  serverProcess = await startServer(csgoConfig.csgoPath, config, (data) => {
+  serverProcess = await startServer(csgoConfig.csgoPath, { ...config, port: portValidation.port }, (data) => {
     mainWindow.webContents.send('server-output', data.toString());
   });
   return true;
@@ -178,28 +283,54 @@ ipcMain.handle('stop-server', async () => {
 ipcMain.handle('get-server-status', () => getServerStatus(serverProcess));
 
 ipcMain.handle('launch-csgo', async (_, flags) => {
+  if (flags && typeof flags !== 'string') {
+    throw new Error('Invalid flags');
+  }
   const config = loadConfig();
   if (!config.csgoPath) throw new Error('CSGO path not set');
   return await launchCSGO(config.csgoPath, flags);
 });
 
 ipcMain.handle('fetch-player-stats', async (_, steamId, apiKey) => {
-  return await fetchPlayerStats(steamId, apiKey);
+  const steamIdValidation = validateSteamId(steamId);
+  if (!steamIdValidation.valid) {
+    throw new Error(steamIdValidation.error);
+  }
+  const apiKeyValidation = validateApiKey(apiKey);
+  if (!apiKeyValidation.valid) {
+    throw new Error(apiKeyValidation.error);
+  }
+  return await fetchPlayerStats(steamIdValidation.steamId, apiKeyValidation.apiKey);
 });
 
 ipcMain.handle('parse-stats', async (_, rawStats) => {
+  if (!rawStats || typeof rawStats !== 'object') {
+    throw new Error('Invalid stats data');
+  }
   return parseStats(rawStats);
 });
 
 ipcMain.handle('get-cached-stats', () => getCachedStats());
 
 ipcMain.handle('save-stats', async (_, stats) => {
+  if (!stats || typeof stats !== 'object') {
+    throw new Error('Invalid stats data');
+  }
   fs.writeFileSync(STATS_PATH, JSON.stringify(stats, null, 2));
   return true;
 });
 
-ipcMain.handle('open-external', (_, url) => shell.openExternal(url));
+ipcMain.handle('open-external', (_, url) => {
+  const validation = validateUrl(url);
+  if (!validation.valid) {
+    throw new Error(validation.error);
+  }
+  return shell.openExternal(validation.url);
+});
 
 ipcMain.handle('show-toast', (_, message, type = 'info') => {
+  if (!message || typeof message !== 'string' || message.length > 500) {
+    return;
+  }
   mainWindow.webContents.send('toast', { message, type });
 });

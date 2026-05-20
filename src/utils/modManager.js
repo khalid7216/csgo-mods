@@ -2,6 +2,7 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { validateUrl, validateFileSize, ALLOWED_DOMAINS, MAX_FILE_SIZE } = require('./security');
 
 const MODS_PATH = path.join(__dirname, '../../mods-cache/mods.json');
 const API_BASE = 'https://api.gamebanana.com';
@@ -166,11 +167,24 @@ async function downloadFile(item, csgoPath, onProgress, type = 'map') {
     const filePath = path.join(dir, fileName);
 
     const downloadUrl = item.files?.[0]?.url || item.downloadUrl;
+
+    const urlValidation = validateUrl(downloadUrl);
+    if (!urlValidation.valid) {
+      reject(new Error(`Invalid download URL: ${urlValidation.error}`));
+      return;
+    }
+
     const client = downloadUrl.startsWith('https') ? https : http;
 
     const req = client.get(downloadUrl, { headers: { 'User-Agent': 'CSGO-Mod-Manager/1.0' } }, (res) => {
       if (res.statusCode === 302 || res.statusCode === 301) {
-        downloadFile({ ...item, downloadUrl: res.headers.location }, csgoPath, onProgress, type).then(resolve).catch(reject);
+        const redirectUrl = res.headers.location;
+        const redirectValidation = validateUrl(redirectUrl);
+        if (!redirectValidation.valid) {
+          reject(new Error(`Invalid redirect URL: ${redirectValidation.error}`));
+          return;
+        }
+        downloadFile({ ...item, downloadUrl: redirectUrl }, csgoPath, onProgress, type).then(resolve).catch(reject);
         return;
       }
 
@@ -180,11 +194,24 @@ async function downloadFile(item, csgoPath, onProgress, type = 'map') {
       }
 
       const totalSize = parseInt(res.headers['content-length'], 10);
+      if (totalSize) {
+        const sizeValidation = validateFileSize(totalSize);
+        if (!sizeValidation.valid) {
+          reject(new Error(sizeValidation.error));
+          return;
+        }
+      }
+
       let downloaded = 0;
       const fileStream = fs.createWriteStream(filePath);
 
       res.on('data', (chunk) => {
         downloaded += chunk.length;
+        if (downloaded > MAX_FILE_SIZE) {
+          fileStream.destroy();
+          reject(new Error('File size exceeds maximum limit'));
+          return;
+        }
         if (onProgress && totalSize) {
           onProgress({ percent: Math.round((downloaded / totalSize) * 100), downloaded, total: totalSize });
         }
@@ -228,6 +255,13 @@ async function installMap(mapPath, csgoPath) {
 
   const fileName = path.basename(mapPath);
   const destPath = path.join(mapsDir, fileName);
+
+  const resolvedDest = path.resolve(destPath);
+  const resolvedMapsDir = path.resolve(mapsDir);
+  if (!resolvedDest.startsWith(resolvedMapsDir)) {
+    throw new Error('Path traversal detected');
+  }
+
   fs.copyFileSync(mapPath, destPath);
 
   const mods = getMods();
@@ -253,7 +287,11 @@ async function removeMod(modId, modType) {
 
   const mod = mods[modType][index];
   if (mod.filePath && fs.existsSync(mod.filePath)) {
-    fs.unlinkSync(mod.filePath);
+    const resolvedPath = path.resolve(mod.filePath);
+    const resolvedModDir = path.resolve(path.join(__dirname, '../../mods-cache'));
+    if (resolvedPath.startsWith(resolvedModDir)) {
+      fs.unlinkSync(mod.filePath);
+    }
   }
   mods[modType].splice(index, 1);
   saveMods(mods);

@@ -71,6 +71,16 @@ csgo-mods/
 └── package.json
 ```
 
+## Security
+- Content Security Policy (CSP) headers
+- IPC input validation and sanitization
+- Path traversal prevention
+- URL validation for external links
+- File size limits (500MB max)
+- Domain whitelist for downloads
+- Sandbox mode enabled
+- See [SECURITY.md](SECURITY.md) for full checklist
+
 ## APIs Used
 
 ### GameBanana Core API
