@@ -12,6 +12,8 @@ export default function LANPage({ config, addToast }) {
     rconPassword: 'changeme'
   });
   const [loading, setLoading] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [dsInstalled, setDsInstalled] = useState(false);
 
   const maps = ['de_dust2', 'de_inferno', 'de_mirage', 'de_nuke', 'de_train', 'de_overpass', 'de_cbble', 'de_cache', 'de_canals', 'cs_office', 'cs_italy', 'cs_assault'];
 
@@ -21,7 +23,21 @@ export default function LANPage({ config, addToast }) {
     window.electronAPI.onServerOutput((data) => {
       setServerOutput((prev) => [...prev.slice(-100), data]);
     });
+
+    window.electronAPI.findDedicatedServer().then(setDsInstalled);
   }, []);
+
+  const handleInstallDS = async () => {
+    setInstalling(true);
+    try {
+      await window.electronAPI.installDedicatedServer();
+      setDsInstalled(true);
+      addToast('Dedicated Server installed', 'success');
+    } catch (err) {
+      addToast(err.message, 'error');
+    }
+    setInstalling(false);
+  };
 
   const handleStartServer = async () => {
     setLoading(true);
@@ -51,8 +67,9 @@ export default function LANPage({ config, addToast }) {
   };
 
   const copyIP = () => {
-    navigator.clipboard.writeText(`${localIP}:${serverConfig.port}`);
-    addToast('IP copied to clipboard', 'success');
+    const text = `${localIP}:${serverConfig.port}`;
+    navigator.clipboard.writeText(text);
+    addToast('IP:Port copied! In CSGO console, type connect then paste', 'success');
   };
 
   return (
@@ -121,10 +138,10 @@ export default function LANPage({ config, addToast }) {
               {!serverRunning ? (
                 <button
                   onClick={handleStartServer}
-                  disabled={loading}
+                  disabled={loading || !dsInstalled}
                   className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 py-3 rounded-lg font-bold transition-colors"
                 >
-                  {loading ? 'Starting...' : 'Start Server'}
+                  {loading ? 'Starting...' : !dsInstalled ? 'Install DS First' : 'Start Server'}
                 </button>
               ) : (
                 <button
@@ -139,6 +156,16 @@ export default function LANPage({ config, addToast }) {
                 className="w-full bg-primary-600 hover:bg-primary-700 py-3 rounded-lg font-bold transition-colors"
               >
                 Launch CSGO
+              </button>
+            </div>
+            <div className="mt-4 pt-4 border-t border-dark-700">
+              <p className="text-dark-400 text-sm mb-3">Dedicated Server: {dsInstalled ? <span className="text-green-400">Installed</span> : <span className="text-yellow-400">Not Installed</span>}</p>
+              <button
+                onClick={handleInstallDS}
+                disabled={installing || dsInstalled}
+                className="w-full bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 py-2 rounded-lg font-bold transition-colors text-sm"
+              >
+                {installing ? 'Installing...' : dsInstalled ? 'Installed' : 'Install Dedicated Server'}
               </button>
             </div>
           </div>
@@ -157,14 +184,15 @@ export default function LANPage({ config, addToast }) {
                   onClick={copyIP}
                   className="bg-primary-600/20 hover:bg-primary-600/40 text-primary-400 px-4 py-2 rounded-lg transition-colors"
                 >
-                  Copy Connect String
+                  Copy IP:Port
                 </button>
               </div>
               <div className="mt-4 pt-4 border-t border-dark-700">
-                <p className="text-dark-400 text-sm">Friends connect with:</p>
+                <p className="text-dark-400 text-sm">Friends connect to:</p>
                 <code className="block mt-2 bg-dark-950 p-3 rounded-lg font-mono text-green-400">
-                  connect {localIP}:{serverConfig.port}
+                  {localIP}:{serverConfig.port}
                 </code>
+                <p className="text-dark-500 text-xs mt-2">Type <span className="text-primary-400">connect</span> then paste in CSGO console</p>
               </div>
             </div>
           </div>
@@ -185,11 +213,12 @@ export default function LANPage({ config, addToast }) {
           <div className="bg-dark-900 rounded-xl border border-dark-800 p-6">
             <h3 className="font-semibold mb-4">Setup Guide</h3>
             <ol className="space-y-3 text-dark-400 text-sm">
-              <li className="flex gap-3"><span className="text-primary-500 font-bold">1.</span> Configure server settings above</li>
-              <li className="flex gap-3"><span className="text-primary-500 font-bold">2.</span> Click "Start Server" to launch SRCDS</li>
-              <li className="flex gap-3"><span className="text-primary-500 font-bold">3.</span> Share your IP with friends on same WiFi</li>
-              <li className="flex gap-3"><span className="text-primary-500 font-bold">4.</span> Friends type <code className="bg-dark-800 px-2 py-0.5 rounded">connect YOUR_IP:27015</code> in console</li>
-              <li className="flex gap-3"><span className="text-primary-500 font-bold">5.</span> Launch CSGO with -insecure flag for mods</li>
+              <li className="flex gap-3"><span className="text-primary-500 font-bold">1.</span> Install Dedicated Server (if not installed)</li>
+              <li className="flex gap-3"><span className="text-primary-500 font-bold">2.</span> Configure server settings above</li>
+              <li className="flex gap-3"><span className="text-primary-500 font-bold">3.</span> Click "Start Server" (Steam must be running)</li>
+              <li className="flex gap-3"><span className="text-primary-500 font-bold">4.</span> Click "Copy IP:Port" and share with friends</li>
+              <li className="flex gap-3"><span className="text-primary-500 font-bold">5.</span> Friends type <code className="bg-dark-800 px-2 py-0.5 rounded">connect</code> in console, paste IP:Port</li>
+              <li className="flex gap-3"><span className="text-primary-500 font-bold">6.</span> Launch CSGO with "Launch CSGO" button</li>
             </ol>
           </div>
         </div>

@@ -3,6 +3,17 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 
+const STEAM_DIR = 'C:\\Program Files (x86)\\Steam';
+const STEAMCMD_DIR = path.join(STEAM_DIR, 'steamcmd');
+
+const DS_SEARCH_PATHS = [
+  'C:\\srcds',
+  path.join(STEAMCMD_DIR, 'csgo_ds'),
+  path.join(STEAM_DIR, 'steamapps', 'common', 'Counter-Strike Global Offensive Dedicated Server'),
+  path.join(STEAM_DIR, '..', 'steamcmd', 'csgo_ds'),
+  'C:\\steamcmd\\csgo_ds'
+];
+
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -15,75 +26,65 @@ function getLocalIP() {
   return '127.0.0.1';
 }
 
+function findDedicatedServer() {
+  for (const dir of DS_SEARCH_PATHS) {
+    const srcdsExe = path.join(dir, 'srcds.exe');
+    if (fs.existsSync(srcdsExe)) {
+      return dir;
+    }
+  }
+  return null;
+}
+
 function openFirewallPort(port = 27015) {
   return new Promise((resolve) => {
     exec(
-      `netsh advfirewall firewall add rule name="CSGO Server ${port}" dir=in action=allow protocol=TCP localport=${port}`,
+      `netsh advfirewall firewall add rule name="CSGO Server ${port}" dir=in action=allow protocol=UDP localport=${port} >nul 2>&1`,
       (error) => {
-        if (error) {
-          resolve({ success: false, error: error.message });
-        } else {
-          resolve({ success: true });
-        }
+        resolve({ success: !error, error: error ? error.message : null });
       }
     );
   });
 }
 
-async function installSRCDS(steamPath) {
-  return new Promise((resolve) => {
-    const steamcmdPath = path.join(steamPath, '..', 'steamcmd');
-    if (!fs.existsSync(steamcmdPath)) {
-      fs.mkdirSync(steamcmdPath, { recursive: true });
-    }
+async function installDedicatedServer(onOutput) {
+  if (!fs.existsSync(STEAMCMD_DIR)) {
+    fs.mkdirSync(STEAMCMD_DIR, { recursive: true });
+  }
 
-    const installScript = `force_install_dir ${path.join(steamcmdPath, 'csgo_ds')}
+  const steamcmdExe = path.join(STEAMCMD_DIR, 'steamcmd.exe');
+  if (!fs.existsSync(steamcmdExe)) {
+    throw new Error('SteamCMD not found. Download from https://developer.valvesoftware.com/wiki/SteamCMD and save to ' + STEAMCMD_DIR);
+  }
+
+  const installDir = path.join(STEAMCMD_DIR, 'csgo_ds');
+  const installScript = `force_install_dir ${installDir}
 login anonymous
 app_update 740 validate
 quit`;
 
-    const scriptPath = path.join(steamcmdPath, 'install_csgo_ds.txt');
-    fs.writeFileSync(scriptPath, installScript);
+  const scriptPath = path.join(STEAMCMD_DIR, 'install_csgo_ds.txt');
+  fs.writeFileSync(scriptPath, installScript);
 
-    const steamcmdExe = path.join(steamcmdPath, 'steamcmd.exe');
-    if (!fs.existsSync(steamcmdExe)) {
-      resolve({ success: false, error: 'SteamCMD not found. Download from https://developer.valvesoftware.com/wiki/SteamCMD' });
-      return;
-    }
-
-    exec(`"${steamcmdExe}" +runscript "${scriptPath}"`, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ success: false, error: stderr || error.message });
+  return new Promise((resolve, reject) => {
+    if (onOutput) onOutput('Installing CSGO Dedicated Server (this may take a while)...\n');
+    const proc = spawn(steamcmdExe, ['+runscript', scriptPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+    proc.stdout.on('data', (data) => {
+      if (onOutput) onOutput(data);
+    });
+    proc.stderr.on('data', (data) => {
+      if (onOutput) onOutput(data);
+    });
+    proc.on('close', (code) => {
+      if (code === 0) {
+        if (onOutput) onOutput('\nInstallation complete!\n');
+        resolve({ success: true, installDir });
       } else {
-        resolve({ success: true, installDir: path.join(steamcmdPath, 'csgo_ds') });
+        reject(new Error(`SteamCMD exited with code ${code}`));
       }
     });
+    proc.on('error', (err) => reject(err));
   });
-}
-
-function createServerCFG(csgoPath, config) {
-  const cfgDir = path.join(csgoPath, 'csgo', 'cfg');
-  if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
-
-  const cfgContent = `hostname "${config.hostname || 'CSGO Mod Manager Server'}"
-sv_lan 1
-sv_pure 0
-sv_cheats 0
-maxplayers ${config.maxPlayers || 16}
-rcon_password "${config.rconPassword || 'changeme'}"
-mp_autoteambalance 0
-mp_limitteams 0
-mp_roundtime 1.92
-mp_roundtime_defuse 1.92
-mp_freezetime 0
-mp_buytime 9999
-mp_buy_anywhere 1
-sv_alltalk 1
-mp_restartgame 1
-`;
-
-  fs.writeFileSync(path.join(cfgDir, 'server.cfg'), cfgContent);
-  return true;
 }
 
 let serverProcess = null;
@@ -100,41 +101,57 @@ function isSteamRunning() {
   });
 }
 
-function findSteamDir(csgoPath) {
-  let current = csgoPath;
-  for (let i = 0; i < 10; i++) {
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    if (fs.existsSync(path.join(parent, 'Steam.exe'))) {
-      return parent;
-    }
-    current = parent;
-  }
-  const fallback = 'C:\\Program Files (x86)\\Steam';
-  if (fs.existsSync(path.join(fallback, 'Steam.exe'))) {
-    return fallback;
-  }
-  return null;
-}
-
 async function startServer(csgoPath, config, onOutput) {
   const steamRunning = await isSteamRunning();
   if (!steamRunning) {
-    throw new Error('Please open Steam first. SRCDS requires the Steam client to be running.');
+    throw new Error('Steam is not running. SRCDS requires Steam to be open.');
   }
 
-  const srcdsPath = path.join(csgoPath, 'srcds.exe');
-  const altPath = path.join(csgoPath, 'bin', 'srcds.exe');
-
-  const exePath = fs.existsSync(srcdsPath) ? srcdsPath : fs.existsSync(altPath) ? altPath : null;
-  if (!exePath) {
-    throw new Error('srcds.exe not found. Install Dedicated Server via SteamCMD.');
+  const dsDir = findDedicatedServer();
+  if (!dsDir) {
+    throw new Error(
+      'SRCDS not found. Checked: ' + DS_SEARCH_PATHS.join(', ') +
+      '\n\nMake sure srcds.exe exists in one of these locations.\n' +
+      'Or use "Install Dedicated Server" button in LAN Settings.'
+    );
   }
 
-  createServerCFG(csgoPath, config);
+  const clientCsgoDir = path.join(csgoPath, 'csgo');
+  if (!fs.existsSync(clientCsgoDir)) {
+    throw new Error('CSGO game directory not found at ' + clientCsgoDir);
+  }
+
+  const srcdsGameDir = path.join(dsDir, 'csgo');
+  const checkFile = path.join(srcdsGameDir, 'maps', 'de_dust2.bsp');
+  if (!fs.existsSync(checkFile)) {
+    if (onOutput) onOutput('Copying game files to SRCDS... (one time only, may take a minute)\n');
+    fs.mkdirSync(srcdsGameDir, { recursive: true });
+    try {
+      fs.cpSync(clientCsgoDir, srcdsGameDir, { recursive: true, force: false });
+      if (onOutput) onOutput('Game files copied to SRCDS\n');
+    } catch (err) {
+      throw new Error('Failed to copy game files: ' + err.message);
+    }
+  }
+
+  const cfgDir = path.join(srcdsGameDir, 'cfg');
+  if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
+
+  const cfgContent = `hostname "${config.hostname || 'CSGO Mod Manager Server'}"
+sv_lan 1
+sv_pure 0
+sv_consistency 0
+sv_cheats 0
+sv_allowdownload 1
+sv_allowupload 1
+mp_autoteambalance 1
+mp_limitteams 0
+bot_quota 0
+`;
+  fs.writeFileSync(path.join(cfgDir, 'server.cfg'), cfgContent);
+
   await openFirewallPort(config.port || 27015);
 
-  const steamDir = findSteamDir(csgoPath);
   const port = config.port || 27015;
   const maxPlayers = config.maxPlayers || 16;
   const map = config.map || 'de_dust2';
@@ -142,24 +159,16 @@ async function startServer(csgoPath, config, onOutput) {
   const args = [
     '-game', 'csgo',
     '-console',
-    '-usercon',
-    '-insecure',
-    '-nobreakpad',
-    '+game_type', '0',
-    '+game_mode', '1',
-    '+mapgroup', 'mg_active',
+    '+sv_lan', '1',
     '+map', map,
     '-port', String(port),
     '+maxplayers', String(maxPlayers),
-    '+sv_lan', '1',
-    '+servercfgfile', 'server.cfg'
+    '-insecure',
+    '-nobreakpad'
   ];
 
-  if (steamDir) {
-    args.push('-steam_dir', steamDir);
-  }
-
-  serverProcess = spawn(exePath, args, { cwd: path.dirname(exePath), stdio: ['pipe', 'pipe', 'pipe'] });
+  if (onOutput) onOutput('Starting SRCDS...\n');
+  serverProcess = spawn(path.join(dsDir, 'srcds.exe'), args, { cwd: dsDir, stdio: ['pipe', 'pipe', 'pipe'] });
 
   serverProcess.stdout.on('data', (data) => {
     if (onOutput) onOutput(data);
@@ -169,31 +178,41 @@ async function startServer(csgoPath, config, onOutput) {
     if (onOutput) onOutput(data);
   });
 
+  serverProcess.on('error', (err) => {
+    if (onOutput) onOutput(`Failed to start SRCDS: ${err.message}\n`);
+    serverProcess = null;
+  });
+
   serverProcess.on('close', (code) => {
-    if (onOutput) onOutput(`Server stopped with code ${code}`);
+    if (onOutput) onOutput(`Server stopped with code ${code}\n`);
     serverProcess = null;
   });
 
   return true;
 }
 
-function stopServer(process) {
-  if (process) {
-    process.kill('SIGTERM');
-    setTimeout(() => {
-      if (process && !process.killed) process.kill('SIGKILL');
-    }, 5000);
+function stopServer() {
+  if (serverProcess) {
+    const pid = serverProcess.pid;
+    try {
+      exec(`taskkill /PID ${pid} /T /F`, () => {});
+    } catch {}
+    serverProcess = null;
     return true;
   }
   return false;
 }
 
-function getServerStatus(process) {
-  if (!process) return { running: false };
-  return {
-    running: !process.killed,
-    pid: process.pid
-  };
+function getServerStatus() {
+  if (!serverProcess) return { running: false };
+  try {
+    return {
+      running: !serverProcess.killed,
+      pid: serverProcess.pid
+    };
+  } catch {
+    return { running: false };
+  }
 }
 
 async function launchCSGO(csgoPath, flags = []) {
@@ -212,4 +231,4 @@ async function launchCSGO(csgoPath, flags = []) {
   return { success: true };
 }
 
-module.exports = { getLocalIP, openFirewallPort, installSRCDS, createServerCFG, startServer, stopServer, getServerStatus, launchCSGO };
+module.exports = { getLocalIP, openFirewallPort, installDedicatedServer, findDedicatedServer, startServer, stopServer, getServerStatus, launchCSGO };

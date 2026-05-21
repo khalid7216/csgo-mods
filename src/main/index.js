@@ -4,7 +4,7 @@ const fs = require('fs');
 const { detectCSGOPath, validateCSGOPath, saveCSGOPath, loadCSGOPath } = require('../utils/csgoPath');
 const { getGameBananaMaps, getGameBananaSkins, downloadMap, downloadSkin, installMap, getInstalledMods, removeMod } = require('../utils/modManager');
 const { createVMT, createVPK, installSkin } = require('../utils/skinManager');
-const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO } = require('../utils/lanServer');
+const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO, installDedicatedServer, findDedicatedServer } = require('../utils/lanServer');
 const { fetchPlayerStats, parseStats, getCachedStats } = require('../utils/statsParser');
 const {
   validatePath,
@@ -24,7 +24,6 @@ const MODS_PATH = path.join(__dirname, '../../mods-cache/mods.json');
 const STATS_PATH = path.join(__dirname, '../../mods-cache/stats.json');
 
 let mainWindow;
-let serverProcess = null;
 
 function ensureCacheDir() {
   const cacheDir = path.join(__dirname, '../../mods-cache');
@@ -125,7 +124,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (serverProcess) stopServer(serverProcess);
+  stopServer();
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -273,6 +272,16 @@ ipcMain.handle('install-skin', async (_, skinData) => {
 
 ipcMain.handle('get-local-ip', () => getLocalIP());
 
+ipcMain.handle('install-dedicated-server', async () => {
+  return await installDedicatedServer((data) => {
+    mainWindow.webContents.send('server-output', data.toString());
+  });
+});
+
+ipcMain.handle('find-dedicated-server', () => {
+  return !!findDedicatedServer();
+});
+
 ipcMain.handle('start-server', async (_, config) => {
   if (!config || typeof config !== 'object') {
     throw new Error('Invalid config');
@@ -283,21 +292,16 @@ ipcMain.handle('start-server', async (_, config) => {
   }
   const csgoConfig = loadConfig();
   if (!csgoConfig.csgoPath) throw new Error('CSGO path not set');
-  serverProcess = await startServer(csgoConfig.csgoPath, { ...config, port: portValidation.port }, (data) => {
+  return await startServer(csgoConfig.csgoPath, { ...config, port: portValidation.port }, (data) => {
     mainWindow.webContents.send('server-output', data.toString());
   });
-  return true;
 });
 
 ipcMain.handle('stop-server', async () => {
-  if (serverProcess) {
-    stopServer(serverProcess);
-    serverProcess = null;
-  }
-  return true;
+  return stopServer();
 });
 
-ipcMain.handle('get-server-status', () => getServerStatus(serverProcess));
+ipcMain.handle('get-server-status', () => getServerStatus());
 
 ipcMain.handle('launch-csgo', async (_, flags) => {
   const config = loadConfig();

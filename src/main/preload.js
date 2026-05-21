@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCachedStats: () => ipcRenderer.invoke('get-cached-stats'),
   saveStats: (stats) => ipcRenderer.invoke('save-stats', stats),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  installDedicatedServer: () => ipcRenderer.invoke('install-dedicated-server'),
+  findDedicatedServer: () => ipcRenderer.invoke('find-dedicated-server'),
   onDownloadProgress: (callback) => ipcRenderer.on('download-progress', (_, data) => callback(data)),
   onServerOutput: (callback) => ipcRenderer.on('server-output', (_, data) => callback(data)),
   onToast: (callback) => ipcRenderer.on('toast', (_, data) => callback(data))
