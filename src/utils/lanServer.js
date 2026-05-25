@@ -107,39 +107,12 @@ function isSteamRunning() {
 }
 
 async function startServer(csgoPath, config, onOutput) {
-  const steamRunning = await isSteamRunning();
-  if (!steamRunning) {
-    throw new Error('Steam is not running. SRCDS requires Steam to be open.');
+  const csgoExe = path.join(csgoPath, 'csgo.exe');
+  if (!fs.existsSync(csgoExe)) {
+    throw new Error('csgo.exe not found at ' + csgoExe);
   }
 
-  const dsDir = findDedicatedServer();
-  if (!dsDir) {
-    throw new Error(
-      'SRCDS not found. Checked: ' + DS_SEARCH_PATHS.join(', ') +
-      '\n\nMake sure srcds.exe exists in one of these locations.\n' +
-      'Or use "Install Dedicated Server" button in LAN Settings.'
-    );
-  }
-
-  const clientCsgoDir = path.join(csgoPath, 'csgo');
-  if (!fs.existsSync(clientCsgoDir)) {
-    throw new Error('CSGO game directory not found at ' + clientCsgoDir);
-  }
-
-  const srcdsGameDir = path.join(dsDir, 'csgo');
-  const checkFile = path.join(srcdsGameDir, 'maps', 'de_dust2.bsp');
-  if (!fs.existsSync(checkFile)) {
-    if (onOutput) onOutput('Copying game files to SRCDS... (one time only, may take a minute)\n');
-    fs.mkdirSync(srcdsGameDir, { recursive: true });
-    try {
-      fs.cpSync(clientCsgoDir, srcdsGameDir, { recursive: true, force: false });
-      if (onOutput) onOutput('Game files copied to SRCDS\n');
-    } catch (err) {
-      throw new Error('Failed to copy game files: ' + err.message);
-    }
-  }
-
-  const cfgDir = path.join(srcdsGameDir, 'cfg');
+  const cfgDir = path.join(csgoPath, 'csgo', 'cfg');
   if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
 
   const cfgContent = `hostname "${config.hostname || 'CSGO Mod Manager Server'}"
@@ -158,60 +131,33 @@ bot_quota 0
   await openFirewallPort(config.port || 27015);
 
   const port = config.port || 27015;
-  const maxPlayers = config.maxPlayers || 16;
   const map = config.map || 'de_dust2';
 
-  const logFile = path.join(srcdsGameDir, 'console.log');
   const args = [
-    '-game', 'csgo',
-    '-console',
-    '-condebug',
-    '+sv_lan', '1',
-    '+map', map,
-    '-port', String(port),
-    '+maxplayers', String(maxPlayers),
     '-insecure',
-    '-nobreakpad'
+    '-novid',
+    '-console',
+    '+sv_lan', '1',
+    '+ip', '0.0.0.0',
+    '+map', map,
+    '-port', String(port)
   ];
 
-  if (onOutput) onOutput('Starting SRCDS...\n');
-  serverProcess = spawn(path.join(dsDir, 'srcds.exe'), args, {
-    cwd: dsDir,
+  if (onOutput) onOutput('Launching CSGO LAN host...\n');
+  serverProcess = spawn(csgoExe, args, {
+    cwd: csgoPath,
     detached: true,
     stdio: 'ignore'
   });
   serverProcess.unref();
 
-  let lastLogSize = 0;
-  const logInterval = setInterval(() => {
-    if (!serverProcess || serverProcess.killed) {
-      clearInterval(logInterval);
-      return;
-    }
-    try {
-      if (fs.existsSync(logFile)) {
-        const stats = fs.statSync(logFile);
-        if (stats.size > lastLogSize) {
-          const fd = fs.openSync(logFile, 'r');
-          const buf = Buffer.alloc(stats.size - lastLogSize);
-          fs.readSync(fd, buf, 0, buf.length, lastLogSize);
-          fs.closeSync(fd);
-          if (onOutput) onOutput(buf.toString());
-          lastLogSize = stats.size;
-        }
-      }
-    } catch {}
-  }, 500);
-
   serverProcess.on('close', (code) => {
-    clearInterval(logInterval);
-    if (onOutput) onOutput(`Server stopped with code ${code}\n`);
+    if (onOutput) onOutput(`CSGO closed with code ${code}\n`);
     serverProcess = null;
   });
 
   serverProcess.on('error', (err) => {
-    clearInterval(logInterval);
-    if (onOutput) onOutput(`Failed to start SRCDS: ${err.message}\n`);
+    if (onOutput) onOutput(`Failed to launch CSGO: ${err.message}\n`);
     serverProcess = null;
   });
 
