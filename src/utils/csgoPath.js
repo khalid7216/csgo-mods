@@ -4,18 +4,14 @@ const path = require('path');
 
 const CSGO_FOLDER_NAMES = [
   'Counter-Strike Global Offensive',
-  'csgo legacy',
-  'CS2',
-  'Counter-Strike 2'
+  'csgo legacy'
 ];
 
 async function detectCSGOPath() {
   // Try registry first
   const regPaths = [
     'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 730',
-    'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 730',
-    'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 1086940',
-    'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 1086940'
+    'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App 730'
   ];
 
   for (const regPath of regPaths) {

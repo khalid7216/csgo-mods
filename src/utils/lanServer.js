@@ -6,11 +6,16 @@ const path = require('path');
 const STEAM_DIR = 'C:\\Program Files (x86)\\Steam';
 const STEAMCMD_DIR = path.join(STEAM_DIR, 'steamcmd');
 
+// The dedicated server is in the project root (parent of csgo-mods)
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
+
 const DS_SEARCH_PATHS = [
-  'C:\\srcds',
-  path.join(STEAMCMD_DIR, 'csgo_ds'),
+  PROJECT_ROOT,
   path.join(STEAM_DIR, 'steamapps', 'common', 'Counter-Strike Global Offensive Dedicated Server'),
+  path.join(STEAM_DIR, 'steamapps', 'common', 'Counter-Strike Global Offensive'),
+  path.join(STEAMCMD_DIR, 'csgo_ds'),
   path.join(STEAM_DIR, '..', 'steamcmd', 'csgo_ds'),
+  'C:\\srcds',
   'C:\\steamcmd\\csgo_ds'
 ];
 
@@ -156,9 +161,11 @@ bot_quota 0
   const maxPlayers = config.maxPlayers || 16;
   const map = config.map || 'de_dust2';
 
+  const logFile = path.join(srcdsGameDir, 'console.log');
   const args = [
     '-game', 'csgo',
     '-console',
+    '-condebug',
     '+sv_lan', '1',
     '+map', map,
     '-port', String(port),
@@ -168,23 +175,43 @@ bot_quota 0
   ];
 
   if (onOutput) onOutput('Starting SRCDS...\n');
-  serverProcess = spawn(path.join(dsDir, 'srcds.exe'), args, { cwd: dsDir, stdio: ['pipe', 'pipe', 'pipe'] });
-
-  serverProcess.stdout.on('data', (data) => {
-    if (onOutput) onOutput(data);
+  serverProcess = spawn(path.join(dsDir, 'srcds.exe'), args, {
+    cwd: dsDir,
+    detached: true,
+    stdio: 'ignore'
   });
+  serverProcess.unref();
 
-  serverProcess.stderr.on('data', (data) => {
-    if (onOutput) onOutput(data);
-  });
+  let lastLogSize = 0;
+  const logInterval = setInterval(() => {
+    if (!serverProcess || serverProcess.killed) {
+      clearInterval(logInterval);
+      return;
+    }
+    try {
+      if (fs.existsSync(logFile)) {
+        const stats = fs.statSync(logFile);
+        if (stats.size > lastLogSize) {
+          const fd = fs.openSync(logFile, 'r');
+          const buf = Buffer.alloc(stats.size - lastLogSize);
+          fs.readSync(fd, buf, 0, buf.length, lastLogSize);
+          fs.closeSync(fd);
+          if (onOutput) onOutput(buf.toString());
+          lastLogSize = stats.size;
+        }
+      }
+    } catch {}
+  }, 500);
 
-  serverProcess.on('error', (err) => {
-    if (onOutput) onOutput(`Failed to start SRCDS: ${err.message}\n`);
+  serverProcess.on('close', (code) => {
+    clearInterval(logInterval);
+    if (onOutput) onOutput(`Server stopped with code ${code}\n`);
     serverProcess = null;
   });
 
-  serverProcess.on('close', (code) => {
-    if (onOutput) onOutput(`Server stopped with code ${code}\n`);
+  serverProcess.on('error', (err) => {
+    clearInterval(logInterval);
+    if (onOutput) onOutput(`Failed to start SRCDS: ${err.message}\n`);
     serverProcess = null;
   });
 

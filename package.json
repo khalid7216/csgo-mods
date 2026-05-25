@@ -24,8 +24,11 @@
       "package.json"
     ],
     "win": {
-      "target": ["portable", "dir"],
-      "icon": "public/icon.ico"
+      "target": [
+        "dir"
+      ],
+      "icon": "public/icon.ico",
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
