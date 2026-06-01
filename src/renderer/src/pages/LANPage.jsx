@@ -6,6 +6,11 @@ export default function LANPage({ config, addToast }) {
   const [serverOutput, setServerOutput] = useState([]);
   const [serverConfig, setServerConfig] = useState({
     map: 'de_dust2',
+    gameMode: 'casual',
+    botsEnabled: true,
+    freezeTime: false,
+    skipWarmup: true,
+    friendlyFire: false,
     maxPlayers: 16,
     hostname: 'CSGO Mod Manager Server',
     port: 27015,
@@ -16,6 +21,13 @@ export default function LANPage({ config, addToast }) {
   const [dsInstalled, setDsInstalled] = useState(false);
 
   const maps = ['de_dust2', 'de_inferno', 'de_mirage', 'de_nuke', 'de_train', 'de_overpass', 'de_cbble', 'de_cache', 'de_canals', 'cs_office', 'cs_italy', 'cs_assault'];
+
+  const gameModes = [
+    { id: 'casual', label: 'Casual' },
+    { id: 'competitive', label: 'Competitive' },
+    { id: 'deathmatch', label: 'Deathmatch' },
+    { id: 'retake', label: 'Retake' },
+  ];
 
   useEffect(() => {
     window.electronAPI.getLocalIP().then(setLocalIP);
@@ -90,6 +102,96 @@ export default function LANPage({ config, addToast }) {
                 >
                   {maps.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm text-dark-400 mb-1">Game Mode</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {gameModes.map((mode) => (
+                    <button
+                      key={mode.id}
+                      onClick={() => setServerConfig({ ...serverConfig, gameMode: mode.id })}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        serverConfig.gameMode === mode.id
+                          ? 'bg-primary-600 text-white'
+                          : 'bg-dark-800 text-dark-400 hover:bg-dark-700'
+                      }`}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between bg-dark-800 rounded-lg px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium">Bots</p>
+                  <p className="text-xs text-dark-400">{serverConfig.botsEnabled ? 'Enabled (fill empty slots)' : 'Disabled'}</p>
+                </div>
+                <button
+                  onClick={() => setServerConfig({ ...serverConfig, botsEnabled: !serverConfig.botsEnabled })}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    serverConfig.botsEnabled ? 'bg-green-600' : 'bg-dark-600'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                      serverConfig.botsEnabled ? 'translate-x-6' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="flex items-center justify-between bg-dark-800 rounded-lg px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium">Freeze Time</p>
+                  <p className="text-xs text-dark-400">0 = No freeze at round start</p>
+                </div>
+                <button
+                  onClick={() => setServerConfig({ ...serverConfig, freezeTime: !serverConfig.freezeTime })}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    serverConfig.freezeTime ? 'bg-green-600' : 'bg-dark-600'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                      serverConfig.freezeTime ? 'translate-x-6' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="flex items-center justify-between bg-dark-800 rounded-lg px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium">Skip Warmup</p>
+                  <p className="text-xs text-dark-400">Match starts immediately</p>
+                </div>
+                <button
+                  onClick={() => setServerConfig({ ...serverConfig, skipWarmup: !serverConfig.skipWarmup })}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    serverConfig.skipWarmup ? 'bg-green-600' : 'bg-dark-600'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                      serverConfig.skipWarmup ? 'translate-x-6' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="flex items-center justify-between bg-dark-800 rounded-lg px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium">Friendly Fire</p>
+                  <p className="text-xs text-dark-400">Team damage ON/OFF</p>
+                </div>
+                <button
+                  onClick={() => setServerConfig({ ...serverConfig, friendlyFire: !serverConfig.friendlyFire })}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    serverConfig.friendlyFire ? 'bg-green-600' : 'bg-dark-600'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                      serverConfig.friendlyFire ? 'translate-x-6' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
