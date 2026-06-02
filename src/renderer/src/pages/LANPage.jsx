@@ -7,10 +7,10 @@ export default function LANPage({ config, addToast }) {
   const [serverConfig, setServerConfig] = useState({
     map: 'de_dust2',
     gameMode: 'casual',
-    botsEnabled: true,
+    botsEnabled: false,
     freezeTime: false,
     skipWarmup: true,
-    friendlyFire: false,
+    friendlyFire: true,
     maxPlayers: 16,
     hostname: 'CSGO Mod Manager Server',
     port: 27015,

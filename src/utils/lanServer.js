@@ -117,14 +117,51 @@ async function startServer(csgoPath, config, onOutput) {
 
   const cfgContent = `hostname "${config.hostname || 'CSGO Mod Manager Server'}"
 sv_lan 1
+sv_steamauth 0
+sv_forcepreload 1
+sv_pausable 0
+sv_allow_lobby_connect_only 0
+sv_alltalk 1
+sv_full_alltalk 1
+sv_allow_voice_from_file 1
+sv_steamgroup_exclusive 0
 sv_pure 0
+sv_visiblemaxplayers 16
+sv_minrate 20000
+sv_maxrate 80000
+sv_minupdaterate 20
+sv_maxupdaterate 64
+sv_mincmdrate 20
+sv_maxcmdrate 64
+net_splitpacket_maxrate 15000
+tv_enable 0
+tv_advertise_watchable 0
+spec_freeze_time 0
+spec_freeze_panel_extended_time 0
 mp_autoteambalance 0
 mp_limitteams 0
+mp_teamplay 0
+mp_scoringstyle 0
+mp_autokick 0
+mp_teammates_are_enemies 0
+mp_solid_teammates 1
 mp_roundtime 1.92
 mp_roundtime_defuse 1.92
-sv_cheats 0
+mp_match_can_clinch 1
+mp_maxrounds 30
+mp_halftime 0
 bot_quota ${config.botsEnabled ? 5 : 0}
+bot_quota_mode fill
+bot_autodifficulty_threshold_high 0
+bot_autodifficulty_threshold_low 0
+bot_allow_rogues 0
+bot_chatter off
 ${config.botsEnabled ? '' : 'bot_kick\nbot_stop 1\nbot_join_after_player 1'}
+mp_warmuptime 0
+mp_do_warmup_period 0
+mp_freezetime 0
+mp_warmup_end
+mp_restartgame 1
 `;
   fs.writeFileSync(path.join(cfgDir, 'server.cfg'), cfgContent);
 
@@ -138,7 +175,7 @@ ${config.botsEnabled ? '' : 'bot_kick\nbot_stop 1\nbot_join_after_player 1'}
   };
 
   const botArgs = config.botsEnabled
-    ? ['+bot_quota', '5', '+bot_difficulty', '1', '+bot_join_after_player', '0']
+    ? ['+bot_quota', '5', '+bot_difficulty', '1', '+bot_join_after_player', '1', '+bot_quota_mode', 'fill', '+bot_allow_rogues', '0']
     : ['+bot_quota', '0', '+bot_stop', '1', '+bot_join_after_player', '1', '+bot_quota_mode', 'normal'];
 
   const args = [
@@ -152,20 +189,34 @@ ${config.botsEnabled ? '' : 'bot_kick\nbot_stop 1\nbot_join_after_player 1'}
     '-insecure',
     '-nobreakpad',
     '+exec', 'server.cfg',
-    '+mp_freezetime', config.freezeTime ? '0' : '6',
+    '+mp_freezetime', '0',
     '+mp_warmuptime', config.skipWarmup ? '0' : '30',
-    '+mp_warmup_pausetimer', '1',
+    '+mp_warmup_pausetimer', '01',
     '+mp_do_warmup_period', '0',
     '+mp_friendlyfire', config.friendlyFire ? '1' : '0',
+    '+mp_autoteambalance', '0',
+    '+mp_limitteams', '0',
+    '+mp_autokick', '0',
+    '+tv_enable', '0',
+    '+sv_steamauth', '0',
+    '+sv_allow_lobby_connect_only', '0',
+    '+sv_minrate', '20000',
+    '+sv_maxrate', '80000',
+    '+sv_minupdaterate', '20',
+    '+sv_maxupdaterate', '64',
+    '+bot_quota_mode', 'fill',
     ...gameModeArgs[config.gameMode || 'casual'],
     ...botArgs,
   ];
+
+  fs.writeFileSync(path.join(csgoPath, 'steam_appid.txt'), '4465480');
 
   if (onOutput) onOutput(`Starting ${config.gameMode} server on ${config.map} | Bots: ${config.botsEnabled ? 'ON' : 'OFF'}\n`);
   serverProcess = spawn(csgoExe, args, {
     cwd: csgoPath,
     detached: true,
-    stdio: ['pipe', 'ignore', 'ignore']
+    stdio: ['pipe', 'ignore', 'ignore'],
+    env: { ...process.env, SteamAppId: '4465480', SteamGameId: '4465480' }
   });
   serverProcess.unref();
 
@@ -174,39 +225,77 @@ ${config.botsEnabled ? '' : 'bot_kick\nbot_stop 1\nbot_join_after_player 1'}
   };
 
   setTimeout(() => {
+    send('mp_freezetime 0\n');
+    send('mp_warmuptime 0\n');
+    send('mp_warmup_end\n');
+    send('mp_autoteambalance 0\n');
+    send('mp_limitteams 0\n');
+  }, 2000);
+
+  setTimeout(() => {
     send('mp_warmup_end\n');
     send('mp_warmuptime 0\n');
+    send('mp_freezetime 0\n');
+    send('bot_quota_mode fill\n');
+    send('bot_allow_rogues 0\n');
+    send('bot_chatter off\n');
+    send('tv_enable 0\n');
+    send('sv_steamauth 0\n');
+    send('sv_allow_lobby_connect_only 0\n');
+    send('mp_autoteambalance 0\n');
+    send('mp_limitteams 0\n');
   }, 3000);
 
   setTimeout(() => {
     send('mp_warmup_end\n');
-    send(`mp_freezetime ${config.freezeTime ? '0' : '6'}\n`);
+    send('mp_freezetime 0\n');
     send(`mp_friendlyfire ${config.friendlyFire ? '1' : '0'}\n`);
+    send('bot_quota_mode fill\n');
+    send('mp_autoteambalance 0\n');
+    send('mp_limitteams 0\n');
     if (!config.botsEnabled) {
       send('bot_kick all\n');
       send('bot_quota 0\n');
       send('bot_stop 1\n');
+    } else {
+      send('bot_kick all\n');
+      send('bot_quota 5\n');
+      send('bot_difficulty 1\n');
+      send('bot_join_after_player 1\n');
     }
   }, 6000);
 
   setTimeout(() => {
     send('mp_warmup_end\n');
-    send(`mp_freezetime ${config.freezeTime ? '0' : '6'}\n`);
+    send('mp_freezetime 0\n');
     send(`mp_friendlyfire ${config.friendlyFire ? '1' : '0'}\n`);
     send('mp_restartgame 1\n');
+    send('bot_quota_mode fill\n');
+    send('mp_autoteambalance 0\n');
+    send('mp_limitteams 0\n');
     if (!config.botsEnabled) {
       send('bot_kick all\n');
       send('bot_stop 1\n');
+    } else {
+      send('bot_kick all\n');
+      send('bot_quota 5\n');
+      send('bot_difficulty 1\n');
+      send('bot_join_after_player 1\n');
     }
   }, 10000);
 
   setTimeout(() => {
     send('mp_warmup_end\n');
-    send(`mp_freezetime ${config.freezeTime ? '0' : '6'}\n`);
+    send('mp_freezetime 0\n');
     send(`mp_friendlyfire ${config.friendlyFire ? '1' : '0'}\n`);
+    send('bot_quota_mode fill\n');
+    send('mp_autoteambalance 0\n');
+    send('mp_limitteams 0\n');
     if (!config.botsEnabled) {
       send('bot_kick all\n');
       send('bot_stop 1\n');
+    } else {
+      send('bot_quota 5\n');
     }
   }, 15000);
 
@@ -248,10 +337,17 @@ function getServerStatus() {
 }
 
 async function launchCSGO(csgoPath, flags = []) {
-  const steamExe = path.join('C:\\Program Files (x86)\\Steam', 'steam.exe');
-  if (!fs.existsSync(steamExe)) {
-    throw new Error('steam.exe not found');
+  const steamRunning = await isSteamRunning();
+  if (!steamRunning) {
+    throw new Error('Steam is not running. CSGO requires Steam to be open.');
   }
+
+  const csgoExe = path.join(csgoPath, 'csgo.exe');
+  if (!fs.existsSync(csgoExe)) {
+    throw new Error('csgo.exe not found at ' + csgoExe);
+  }
+
+  fs.writeFileSync(path.join(csgoPath, 'steam_appid.txt'), '730');
 
   const cfgDir = path.join(csgoPath, 'csgo', 'cfg');
   if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
@@ -287,9 +383,12 @@ r_shadowlod 0
   ];
   const allFlags = [...new Set([...defaultFlags, ...flags])];
 
-  exec(`"${steamExe}" -applaunch 730 ${allFlags.join(' ')}`, (error) => {
-    if (error) console.error('Failed to launch CSGO:', error);
-  });
+  spawn(csgoExe, allFlags, {
+    cwd: csgoPath,
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, SteamAppId: '730', SteamGameId: '730' }
+  }).unref();
 
   return { success: true };
 }
