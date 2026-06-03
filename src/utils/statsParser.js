@@ -1,8 +1,6 @@
 const https = require('https');
 const fs = require('fs');
-const path = require('path');
-
-const STATS_PATH = path.join(__dirname, '../../mods-cache/stats.json');
+const { getCachePath } = require('./appPaths');
 
 async function fetchPlayerStats(steamId, apiKey) {
   return new Promise((resolve, reject) => {
@@ -84,6 +82,7 @@ function parseStats(rawStats) {
 
 function getCachedStats() {
   try {
+    const STATS_PATH = getCachePath('stats.json');
     if (fs.existsSync(STATS_PATH)) {
       return JSON.parse(fs.readFileSync(STATS_PATH, 'utf8'));
     }
@@ -92,7 +91,7 @@ function getCachedStats() {
 }
 
 function saveStats(stats) {
-  fs.writeFileSync(STATS_PATH, JSON.stringify(stats, null, 2));
+  fs.writeFileSync(getCachePath('stats.json'), JSON.stringify(stats, null, 2));
 }
 
 module.exports = { fetchPlayerStats, parseStats, getCachedStats, saveStats };

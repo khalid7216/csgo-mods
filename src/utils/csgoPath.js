@@ -1,6 +1,7 @@
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { DEFAULT_CONFIG, ensureCacheFile, getCachePath } = require('./appPaths');
 
 const CSGO_FOLDER_NAMES = [
   'Counter-Strike Global Offensive',
@@ -88,7 +89,7 @@ function validateCSGOPath(csgoPath) {
 }
 
 async function saveCSGOPath(csgoPath) {
-  const configPath = path.join(__dirname, '../../mods-cache/config.json');
+  const configPath = ensureCacheFile('config.json', DEFAULT_CONFIG);
   let config = {};
   try {
     config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -101,7 +102,7 @@ async function saveCSGOPath(csgoPath) {
 }
 
 async function loadCSGOPath() {
-  const configPath = path.join(__dirname, '../../mods-cache/config.json');
+  const configPath = getCachePath('config.json');
   try {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     return config.csgoPath || null;

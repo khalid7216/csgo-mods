@@ -1,0 +1,8 @@
+node_modules
+dist
+mods-cache
+src/renderer/dist
+*.log
+*.exe
+*.blockmap
+**/*.mp4

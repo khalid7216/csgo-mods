@@ -4,3 +4,4 @@ public/csgomp4.mp4
 src/renderer/dist/
 src/renderer/public/csgomp4.mp4
 dist
+.vercel

@@ -15,6 +15,10 @@ export default function SkinsPage({ addToast }) {
   const [vpkCreated, setVpkCreated] = useState(false);
   const [processing, setProcessing] = useState(false);
 
+  const dirname = (filePath) => (filePath || '').replace(/[\\/][^\\/]*$/, '');
+  const basename = (filePath) => (filePath || '').split(/[\\/]/).filter(Boolean).pop() || '';
+  const joinPath = (...parts) => parts.filter(Boolean).join('\\');
+
   useEffect(() => {
     if (view === 'browse') fetchSkins();
   }, [page, view]);
@@ -51,7 +55,7 @@ export default function SkinsPage({ addToast }) {
     input.accept = '.vtf';
     input.onchange = (e) => {
       if (e.target.files[0]) {
-        setVtfFile(e.target.files[0].path);
+        setVtfFile(e.target.files[0].path || e.target.files[0].name);
         addToast(`Selected: ${e.target.files[0].name}`, 'info');
       }
     };
@@ -80,7 +84,7 @@ export default function SkinsPage({ addToast }) {
     if (!vtfFile) return;
     setProcessing(true);
     try {
-      const folderPath = require('path').dirname(vtfFile);
+      const folderPath = dirname(vtfFile);
       const result = await window.electronAPI.createVPK(folderPath);
       if (result.success) {
         setVpkCreated(true);
@@ -100,8 +104,8 @@ export default function SkinsPage({ addToast }) {
       const result = await window.electronAPI.installSkin({
         name: skinName,
         vtfPath: vtfFile,
-        vmtPath: vmtGenerated ? require('path').join(require('path').dirname(vtfFile), `${skinName}.vmt`) : null,
-        vpkPath: vpkCreated ? require('path').join(require('path').dirname(vtfFile), `${require('path').basename(require('path').dirname(vtfFile))}.vpk`) : null
+        vmtPath: vmtGenerated ? joinPath(dirname(vtfFile), `${skinName}.vmt`) : null,
+        vpkPath: vpkCreated ? joinPath(dirname(vtfFile), `${basename(dirname(vtfFile))}.vpk`) : null
       });
       if (result.success) {
         addToast(`Skin "${skinName}" installed!`, 'success');

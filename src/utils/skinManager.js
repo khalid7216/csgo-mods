@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const { isSafePath } = require('./security');
+const { DEFAULT_MODS, ensureCacheFile } = require('./appPaths');
 
 function findVPKExecutable() {
   const possiblePaths = [
@@ -117,7 +118,7 @@ async function installSkin(skinData, csgoPath) {
     }
   }
 
-  const MODS_PATH = path.join(__dirname, '../../mods-cache/mods.json');
+  const MODS_PATH = ensureCacheFile('mods.json', DEFAULT_MODS);
   let mods = { maps: [], skins: [] };
   try {
     mods = JSON.parse(fs.readFileSync(MODS_PATH, 'utf8'));

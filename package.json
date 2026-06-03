@@ -8,8 +8,11 @@
     "dev": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
     "dev:react": "cd src/renderer && vite",
     "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
-    "build": "cd src/renderer && vite build && cd ../.. && electron-builder",
+    "build": "npm run build:installer",
+    "build:installer": "cd src/renderer && vite build && cd ../.. && electron-builder --win nsis --publish=never",
     "build:react": "cd src/renderer && vite build",
+    "vercel-build": "npm run build:react",
+    "deploy:vercel": "vercel --prod",
     "preview": "vite preview src/renderer"
   },
   "build": {
@@ -21,11 +24,12 @@
     },
     "files": [
       "src/**/*",
+      "public/**/*",
       "package.json"
     ],
     "win": {
       "target": [
-        "dir"
+        "nsis"
       ],
       "icon": "public/icon.ico",
       "signAndEditExecutable": false

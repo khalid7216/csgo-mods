@@ -3,26 +3,24 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { validateUrl, validateFileSize, ALLOWED_DOMAINS, MAX_FILE_SIZE } = require('./security');
+const { DEFAULT_MODS, ensureCacheFile, getCacheDir, getCachePath } = require('./appPaths');
 
-const MODS_PATH = path.join(__dirname, '../../mods-cache/mods.json');
 const API_BASE = 'https://api.gamebanana.com';
 const CS_GAME_ID = 4660; // CS:GO GameBanana game ID
 
 const FIELDS = 'name,text,creator,Preview().sStructuredDataFullsizeUrl(),Url().sProfileUrl(),Url().sDownloadUrl(),date,views,likes,Files().aFiles(),Game().name,Category().name,RootCategory().name';
 
 function ensureModsFile() {
-  if (!fs.existsSync(MODS_PATH)) {
-    fs.writeFileSync(MODS_PATH, JSON.stringify({ maps: [], skins: [] }, null, 2));
-  }
+  ensureCacheFile('mods.json', DEFAULT_MODS);
 }
 
 function getMods() {
   ensureModsFile();
-  return JSON.parse(fs.readFileSync(MODS_PATH, 'utf8'));
+  return JSON.parse(fs.readFileSync(getCachePath('mods.json'), 'utf8'));
 }
 
 function saveMods(mods) {
-  fs.writeFileSync(MODS_PATH, JSON.stringify(mods, null, 2));
+  fs.writeFileSync(getCachePath('mods.json'), JSON.stringify(mods, null, 2));
 }
 
 function apiRequest(url) {
@@ -288,7 +286,7 @@ async function removeMod(modId, modType) {
   const mod = mods[modType][index];
   if (mod.filePath && fs.existsSync(mod.filePath)) {
     const resolvedPath = path.resolve(mod.filePath);
-    const resolvedModDir = path.resolve(path.join(__dirname, '../../mods-cache'));
+    const resolvedModDir = path.resolve(getCacheDir());
     if (resolvedPath.startsWith(resolvedModDir)) {
       fs.unlinkSync(mod.filePath);
     }

@@ -6,6 +6,7 @@ const { getGameBananaMaps, getGameBananaSkins, downloadMap, downloadSkin, instal
 const { createVMT, createVPK, installSkin } = require('../utils/skinManager');
 const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO, installDedicatedServer, findDedicatedServer } = require('../utils/lanServer');
 const { fetchPlayerStats, parseStats, getCachedStats } = require('../utils/statsParser');
+const { DEFAULT_CONFIG, DEFAULT_MODS, DEFAULT_STATS, ensureCacheFile, getCachePath } = require('../utils/appPaths');
 const {
   validatePath,
   validateUrl,
@@ -19,36 +20,32 @@ const {
   isSafePath
 } = require('../utils/security');
 
-const CONFIG_PATH = path.join(__dirname, '../../mods-cache/config.json');
-const MODS_PATH = path.join(__dirname, '../../mods-cache/mods.json');
-const STATS_PATH = path.join(__dirname, '../../mods-cache/stats.json');
-
 let mainWindow;
 
 function ensureCacheDir() {
-  const cacheDir = path.join(__dirname, '../../mods-cache');
-  if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
-  if (!fs.existsSync(CONFIG_PATH)) {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ csgoPath: '', steamApiKey: '', serverConfig: { port: 27015, maxPlayers: 16, hostname: 'CSGO Mod Manager Server' } }, null, 2));
-  }
-  if (!fs.existsSync(MODS_PATH)) {
-    fs.writeFileSync(MODS_PATH, JSON.stringify({ maps: [], skins: [] }, null, 2));
-  }
-  if (!fs.existsSync(STATS_PATH)) {
-    fs.writeFileSync(STATS_PATH, JSON.stringify({}, null, 2));
-  }
+  ensureCacheFile('config.json', DEFAULT_CONFIG);
+  ensureCacheFile('mods.json', DEFAULT_MODS);
+  ensureCacheFile('stats.json', DEFAULT_STATS);
 }
 
 function loadConfig() {
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    const loadedConfig = JSON.parse(fs.readFileSync(getCachePath('config.json'), 'utf8'));
+    return {
+      ...DEFAULT_CONFIG,
+      ...loadedConfig,
+      serverConfig: {
+        ...DEFAULT_CONFIG.serverConfig,
+        ...(loadedConfig.serverConfig || {})
+      }
+    };
   } catch {
-    return { csgoPath: '', steamApiKey: '', serverConfig: { port: 27015, maxPlayers: 16, hostname: 'CSGO Mod Manager Server' } };
+    return DEFAULT_CONFIG;
   }
 }
 
 function saveConfig(config) {
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+  fs.writeFileSync(getCachePath('config.json'), JSON.stringify(config, null, 2));
 }
 
 function createWindow() {
@@ -346,7 +343,7 @@ ipcMain.handle('save-stats', async (_, stats) => {
   if (!stats || typeof stats !== 'object') {
     throw new Error('Invalid stats data');
   }
-  fs.writeFileSync(STATS_PATH, JSON.stringify(stats, null, 2));
+  fs.writeFileSync(getCachePath('stats.json'), JSON.stringify(stats, null, 2));
   return true;
 });
 
