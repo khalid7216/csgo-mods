@@ -228,7 +228,7 @@ function createBrowserApi() {
     getServerStatus: () => Promise.resolve({ running: false }),
     launchCSGO: () => desktopOnly('CSGO launch'),
     fetchPlayerStats: async (steamId, apiKey) => {
-      const url = `https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid=730&key=${encodeURIComponent(apiKey)}&steamid=${encodeURIComponent(steamId)}`;
+      const url = `https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid=4465480&key=${encodeURIComponent(apiKey)}&steamid=${encodeURIComponent(steamId)}`;
       const data = await fetchJson(url);
       return data.playerstats?.error ? { error: data.playerstats.error } : data.playerstats;
     },

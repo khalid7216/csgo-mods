@@ -352,7 +352,7 @@ async function launchCSGO(csgoPath, flags = []) {
     throw new Error('csgo.exe not found at ' + csgoExe);
   }
 
-  fs.writeFileSync(path.join(csgoPath, 'steam_appid.txt'), '730');
+  fs.writeFileSync(path.join(csgoPath, 'steam_appid.txt'), '4465480');
 
   const cfgDir = path.join(csgoPath, 'csgo', 'cfg');
   if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
@@ -400,7 +400,7 @@ r_shadowlod 0
     cwd: csgoPath,
     detached: true,
     stdio: 'ignore',
-    env: { ...process.env, SteamAppId: '730', SteamGameId: '730' }
+    env: { ...process.env, SteamAppId: '4465480', SteamGameId: '4465480' }
   }).unref();
 
   return { success: true };

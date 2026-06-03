@@ -4,7 +4,7 @@ const { getCachePath } = require('./appPaths');
 
 async function fetchPlayerStats(steamId, apiKey) {
   return new Promise((resolve, reject) => {
-    const url = `https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid=730&key=${apiKey}&steamid=${steamId}`;
+    const url = `https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid=4465480&key=${apiKey}&steamid=${steamId}`;
 
     https.get(url, (res) => {
       let data = '';
