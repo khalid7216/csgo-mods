@@ -1,4 +1,13 @@
 {
   "maps": [],
-  "skins": []
+  "skins": [
+    {
+      "id": 677375,
+      "name": "Amethyst BFK",
+      "fileName": "Amethyst_BFK_677375",
+      "filePath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\csgo legacy\\csgo\\materials\\models\\weapons\\custom\\Amethyst_BFK_677375",
+      "profileUrl": "https://gamebanana.com/mods/677375",
+      "installedAt": "2026-06-03T14:08:56.698Z"
+    }
+  ]
 }

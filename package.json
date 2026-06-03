@@ -41,7 +41,8 @@
     "asar": true
   },
   "dependencies": {
-    "electron-updater": "^6.1.7"
+    "electron-updater": "^6.1.7",
+    "node-7z-archive": "^1.1.7"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",

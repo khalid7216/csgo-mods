@@ -115,6 +115,8 @@ async function startServer(csgoPath, config, onOutput) {
   const cfgDir = path.join(csgoPath, 'csgo', 'cfg');
   if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
 
+  const map = config.map || 'de_dust2';
+
   const cfgContent = `hostname "${config.hostname || 'CSGO Mod Manager Server'}"
 sv_lan 1
 sv_steamauth 0
@@ -161,9 +163,44 @@ mp_warmuptime 0
 mp_do_warmup_period 0
 mp_freezetime 0
 mp_warmup_end
+exec ${map}.cfg
 mp_restartgame 1
 `;
   fs.writeFileSync(path.join(cfgDir, 'server.cfg'), cfgContent);
+
+  // Create map-specific CFG - CSGO auto-executes [mapname].cfg on map load
+  const mapCfgContent = `mp_warmup_end
+mp_warmuptime 0
+mp_warmup_pausetimer 0
+mp_freezetime 0
+mp_friendlyfire 0
+mp_autoteambalance 0
+mp_limitteams 0
+bot_quota 0
+bot_kick
+bot_stop 1
+mp_restartgame 1
+`;
+  fs.writeFileSync(path.join(cfgDir, `${map}.cfg`), mapCfgContent);
+
+  const autoexecCommands = `mp_freezetime 0
+mp_friendlyfire 0
+mp_warmuptime 0
+mp_warmup_end
+mp_autoteambalance 0
+mp_limitteams 0
+bot_quota 0
+bot_kick
+bot_stop 1
+`;
+
+  // Write autoexec.cfg for SRCDS
+  fs.writeFileSync(path.join(cfgDir, 'autoexec.cfg'), autoexecCommands);
+
+  // Write autoexec.cfg for CSGO client
+  const clientCfgDir = 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\csgo legacy\\csgo\\cfg';
+  if (!fs.existsSync(clientCfgDir)) fs.mkdirSync(clientCfgDir, { recursive: true });
+  fs.writeFileSync(path.join(clientCfgDir, 'autoexec.cfg'), autoexecCommands);
 
   await openFirewallPort(config.port || 27015);
 
@@ -189,7 +226,9 @@ mp_restartgame 1
     '-insecure',
     '-nobreakpad',
     '+exec', 'server.cfg',
-    '+mp_freezetime', '0',
+    '+mapconfig', map,
+    '+exec', map,
+    '+mp_freezetime',  config.freezetime === undefined ? '30' : String(config.freezetime),
     '+mp_warmuptime', config.skipWarmup ? '0' : '30',
     '+mp_warmup_pausetimer', '01',
     '+mp_do_warmup_period', '0',
@@ -214,8 +253,7 @@ mp_restartgame 1
   if (onOutput) onOutput(`Starting ${config.gameMode} server on ${config.map} | Bots: ${config.botsEnabled ? 'ON' : 'OFF'}\n`);
   serverProcess = spawn(csgoExe, args, {
     cwd: csgoPath,
-    detached: true,
-    stdio: ['pipe', 'ignore', 'ignore'],
+    stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, SteamAppId: '4465480', SteamGameId: '4465480' }
   });
   serverProcess.unref();
@@ -224,80 +262,47 @@ mp_restartgame 1
     try { if (serverProcess && serverProcess.stdin) serverProcess.stdin.write(cmd); } catch {}
   };
 
-  setTimeout(() => {
-    send('mp_freezetime 0\n');
-    send('mp_warmuptime 0\n');
-    send('mp_warmup_end\n');
-    send('mp_autoteambalance 0\n');
-    send('mp_limitteams 0\n');
-  }, 2000);
+  let playerJoined = false;
 
-  setTimeout(() => {
-    send('mp_warmup_end\n');
-    send('mp_warmuptime 0\n');
-    send('mp_freezetime 0\n');
-    send('bot_quota_mode fill\n');
-    send('bot_allow_rogues 0\n');
-    send('bot_chatter off\n');
-    send('tv_enable 0\n');
-    send('sv_steamauth 0\n');
-    send('sv_allow_lobby_connect_only 0\n');
-    send('mp_autoteambalance 0\n');
-    send('mp_limitteams 0\n');
-  }, 3000);
+  serverProcess.stdout.on('data', (data) => {
+    const output = data.toString();
+    if (onOutput) onOutput(output);
 
-  setTimeout(() => {
-    send('mp_warmup_end\n');
-    send('mp_freezetime 0\n');
-    send(`mp_friendlyfire ${config.friendlyFire ? '1' : '0'}\n`);
-    send('bot_quota_mode fill\n');
-    send('mp_autoteambalance 0\n');
-    send('mp_limitteams 0\n');
-    if (!config.botsEnabled) {
-      send('bot_kick all\n');
-      send('bot_quota 0\n');
-      send('bot_stop 1\n');
-    } else {
-      send('bot_kick all\n');
-      send('bot_quota 5\n');
-      send('bot_difficulty 1\n');
-      send('bot_join_after_player 1\n');
+    // Detect real player joining
+    if (!playerJoined && (output.includes('entered the game') || output.includes('connected'))) {
+      playerJoined = true;
+      if (onOutput) onOutput('[SERVER] Player detected - running join sequence\n');
+
+      setTimeout(() => {
+        send('mp_warmup_end\n');
+        send('mp_warmuptime 0\n');
+      }, 500);
+
+      setTimeout(() => {
+        send('mp_friendlyfire 0\n');
+      }, 1500);
+
+      setTimeout(() => {
+        send('mp_freezetime 0\n');
+        send('mp_autoteambalance 0\n');
+        send('mp_limitteams 0\n');
+      }, 2500);
+
+      setTimeout(() => {
+        if (!config.botsEnabled) {
+          send('bot_kick all\n');
+          send('bot_stop 1\n');
+          send('bot_quota 0\n');
+        } else {
+          send('bot_kick all\n');
+          send('bot_quota 5\n');
+          send('bot_difficulty 1\n');
+          send('bot_join_after_player 1\n');
+        }
+        send('bot_quota_mode fill\n');
+      }, 3500);
     }
-  }, 6000);
-
-  setTimeout(() => {
-    send('mp_warmup_end\n');
-    send('mp_freezetime 0\n');
-    send(`mp_friendlyfire ${config.friendlyFire ? '1' : '0'}\n`);
-    send('mp_restartgame 1\n');
-    send('bot_quota_mode fill\n');
-    send('mp_autoteambalance 0\n');
-    send('mp_limitteams 0\n');
-    if (!config.botsEnabled) {
-      send('bot_kick all\n');
-      send('bot_stop 1\n');
-    } else {
-      send('bot_kick all\n');
-      send('bot_quota 5\n');
-      send('bot_difficulty 1\n');
-      send('bot_join_after_player 1\n');
-    }
-  }, 10000);
-
-  setTimeout(() => {
-    send('mp_warmup_end\n');
-    send('mp_freezetime 0\n');
-    send(`mp_friendlyfire ${config.friendlyFire ? '1' : '0'}\n`);
-    send('bot_quota_mode fill\n');
-    send('mp_autoteambalance 0\n');
-    send('mp_limitteams 0\n');
-    if (!config.botsEnabled) {
-      send('bot_kick all\n');
-      send('bot_stop 1\n');
-    } else {
-      send('bot_quota 5\n');
-    }
-  }, 15000);
+  });
 
   serverProcess.on('close', (code) => {
     if (onOutput) onOutput(`CSGO closed with code ${code}\n`);
@@ -352,7 +357,14 @@ async function launchCSGO(csgoPath, flags = []) {
   const cfgDir = path.join(csgoPath, 'csgo', 'cfg');
   if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
 
-  const autoexecContent = `mat_global_shader_quality 0
+  const autoexecContent = `mp_freezetime 0
+mp_friendlyfire 0
+mp_warmup_end
+mp_autoteambalance 0
+mp_limitteams 0
+bot_kick
+
+mat_global_shader_quality 0
 mat_reducefillrate 1
 r_dynamic 0
 r_shadows 0
@@ -374,6 +386,7 @@ r_shadowlod 0
     '-w', '1280',
     '-h', '1024',
     '-freq', '60',
+    '+exec', 'autoexec.cfg',
     '+mat_savechanges',
     '+r_dynamic', '0',
     '+r_shadowrendertotexture', '0',
