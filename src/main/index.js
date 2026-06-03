@@ -4,7 +4,7 @@ const fs = require('fs');
 const { detectCSGOPath, validateCSGOPath, saveCSGOPath, loadCSGOPath } = require('../utils/csgoPath');
 const { getGameBananaMaps, getGameBananaSkins, downloadMap, downloadSkin, installMap, getInstalledMods, removeMod } = require('../utils/modManager');
 const { createVMT, createVPK, installSkin } = require('../utils/skinManager');
-const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO, installDedicatedServer, findDedicatedServer } = require('../utils/lanServer');
+const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO, installDedicatedServer, findDedicatedServer, validateDedicatedServerPath } = require('../utils/lanServer');
 const { fetchPlayerStats, parseStats, getCachedStats } = require('../utils/statsParser');
 const { DEFAULT_CONFIG, DEFAULT_MODS, DEFAULT_STATS, ensureCacheFile, getCachePath } = require('../utils/appPaths');
 const {
@@ -148,6 +148,24 @@ ipcMain.handle('select-csgo-path', async () => {
   return null;
 });
 
+ipcMain.handle('validate-dedicated-server-path', async (_, dedicatedServerPath) => {
+  return validateDedicatedServerPath(dedicatedServerPath);
+});
+
+ipcMain.handle('select-dedicated-server-path', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Dedicated Server Folder',
+    properties: ['openDirectory']
+  });
+  if (!result.canceled && result.filePaths.length > 0) {
+    const selectedPath = result.filePaths[0];
+    if (isSafePath(selectedPath)) {
+      return selectedPath;
+    }
+  }
+  return null;
+});
+
 ipcMain.handle('save-csgo-path', async (_, csgoPath) => {
   if (!isSafePath(csgoPath)) {
     throw new Error('Invalid path');
@@ -276,7 +294,8 @@ ipcMain.handle('install-dedicated-server', async () => {
 });
 
 ipcMain.handle('find-dedicated-server', () => {
-  return !!findDedicatedServer();
+  const config = loadConfig();
+  return findDedicatedServer(config.dedicatedServerPath);
 });
 
 ipcMain.handle('start-server', async (_, config) => {
@@ -288,8 +307,13 @@ ipcMain.handle('start-server', async (_, config) => {
     throw new Error(portValidation.error);
   }
   const csgoConfig = loadConfig();
-  if (!csgoConfig.csgoPath) throw new Error('CSGO path not set');
-  return await startServer(csgoConfig.csgoPath, { ...config, port: portValidation.port }, (data) => {
+  const serverConfig = {
+    ...(csgoConfig.serverConfig || {}),
+    ...config,
+    dedicatedServerPath: config.dedicatedServerPath || csgoConfig.dedicatedServerPath,
+    port: portValidation.port
+  };
+  return await startServer(csgoConfig.csgoPath, serverConfig, (data) => {
     mainWindow.webContents.send('server-output', data.toString());
   });
 });

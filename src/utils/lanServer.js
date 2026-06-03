@@ -19,6 +19,98 @@ const DS_SEARCH_PATHS = [
   'C:\\steamcmd\\csgo_ds'
 ];
 
+function normalizeDedicatedServerPath(serverPath) {
+  if (!serverPath || typeof serverPath !== 'string') return '';
+  const trimmed = serverPath.trim();
+  if (!trimmed) return '';
+  const normalized = path.basename(trimmed).toLowerCase() === 'srcds.exe'
+    ? path.dirname(trimmed)
+    : trimmed;
+  return path.resolve(normalized);
+}
+
+function validateDedicatedServerPath(serverPath) {
+  const normalized = normalizeDedicatedServerPath(serverPath);
+  if (!normalized) return { valid: false, error: 'Dedicated server path is empty' };
+  if (!fs.existsSync(normalized)) return { valid: false, error: 'Dedicated server path does not exist', path: normalized };
+
+  let stats;
+  try {
+    stats = fs.statSync(normalized);
+  } catch {
+    return { valid: false, error: 'Cannot read dedicated server path', path: normalized };
+  }
+
+  if (!stats.isDirectory()) {
+    return { valid: false, error: 'Select the folder that contains srcds.exe', path: normalized };
+  }
+
+  const srcdsExe = path.join(normalized, 'srcds.exe');
+  if (!fs.existsSync(srcdsExe)) {
+    return { valid: false, error: 'srcds.exe not found in this folder', path: normalized };
+  }
+
+  const gameDir = path.join(normalized, 'csgo');
+  if (!fs.existsSync(gameDir)) {
+    return { valid: false, error: 'csgo folder not found next to srcds.exe', path: normalized };
+  }
+
+  return {
+    valid: true,
+    path: normalized,
+    folderName: path.basename(normalized),
+    srcdsExe,
+    gameDir,
+    cfgDir: path.join(gameDir, 'cfg')
+  };
+}
+
+function readSteamLibraryPaths() {
+  const libraries = new Set([STEAM_DIR]);
+  const libraryFiles = [
+    path.join(STEAM_DIR, 'steamapps', 'libraryfolders.vdf')
+  ];
+
+  for (const libraryFile of libraryFiles) {
+    if (!fs.existsSync(libraryFile)) continue;
+    try {
+      const content = fs.readFileSync(libraryFile, 'utf8');
+      for (const match of content.matchAll(/"path"\s+"([^"]+)"/g)) {
+        libraries.add(match[1].replace(/\\\\/g, '\\'));
+      }
+    } catch {}
+  }
+
+  return Array.from(libraries);
+}
+
+function getDedicatedServerSearchPaths(configuredPath) {
+  const paths = [];
+  const add = (candidate) => {
+    const normalized = normalizeDedicatedServerPath(candidate);
+    if (normalized && !paths.includes(normalized)) paths.push(normalized);
+  };
+
+  add(configuredPath);
+  for (const candidate of DS_SEARCH_PATHS) add(candidate);
+
+  for (const steamLibrary of readSteamLibraryPaths()) {
+    add(path.join(steamLibrary, 'steamapps', 'common', 'Counter-Strike Global Offensive Dedicated Server'));
+    add(path.join(steamLibrary, 'steamapps', 'common', 'Counter-Strike Global Offensive'));
+    add(path.join(steamLibrary, 'steamcmd', 'csgo_ds'));
+  }
+
+  for (const drive of 'CDEFGHIJKLMNOPQRSTUVWXYZ') {
+    add(`${drive}:\\csgo_ds`);
+    add(`${drive}:\\srcds`);
+    add(`${drive}:\\steamcmd\\csgo_ds`);
+    add(`${drive}:\\SteamCMD\\csgo_ds`);
+    add(`${drive}:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive Dedicated Server`);
+  }
+
+  return paths;
+}
+
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -31,14 +123,13 @@ function getLocalIP() {
   return '127.0.0.1';
 }
 
-function findDedicatedServer() {
-  for (const dir of DS_SEARCH_PATHS) {
-    const srcdsExe = path.join(dir, 'srcds.exe');
-    if (fs.existsSync(srcdsExe)) {
-      return dir;
-    }
+function findDedicatedServer(configuredPath = '') {
+  for (const dir of getDedicatedServerSearchPaths(configuredPath)) {
+    const validation = validateDedicatedServerPath(dir);
+    if (validation.valid) return validation;
   }
-  return null;
+
+  return { valid: false, error: 'Dedicated server not found. Select the folder that contains srcds.exe.' };
 }
 
 function openFirewallPort(port = 27015) {
@@ -107,12 +198,17 @@ function isSteamRunning() {
 }
 
 async function startServer(csgoPath, config, onOutput) {
-  const csgoExe = path.join(csgoPath, 'csgo.exe');
-  if (!fs.existsSync(csgoExe)) {
-    throw new Error('csgo.exe not found at ' + csgoExe);
+  const dedicatedServer = config.dedicatedServerPath
+    ? validateDedicatedServerPath(config.dedicatedServerPath)
+    : findDedicatedServer();
+
+  if (!dedicatedServer.valid) {
+    throw new Error(dedicatedServer.error || 'Dedicated server not found');
   }
 
-  const cfgDir = path.join(csgoPath, 'csgo', 'cfg');
+  const serverRoot = dedicatedServer.path;
+  const srcdsExe = dedicatedServer.srcdsExe;
+  const cfgDir = dedicatedServer.cfgDir;
   if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
 
   const map = config.map || 'de_dust2';
@@ -197,10 +293,11 @@ bot_stop 1
   // Write autoexec.cfg for SRCDS
   fs.writeFileSync(path.join(cfgDir, 'autoexec.cfg'), autoexecCommands);
 
-  // Write autoexec.cfg for CSGO client
-  const clientCfgDir = 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\csgo legacy\\csgo\\cfg';
-  if (!fs.existsSync(clientCfgDir)) fs.mkdirSync(clientCfgDir, { recursive: true });
-  fs.writeFileSync(path.join(clientCfgDir, 'autoexec.cfg'), autoexecCommands);
+  if (csgoPath && fs.existsSync(csgoPath)) {
+    const clientCfgDir = path.join(csgoPath, 'csgo', 'cfg');
+    if (!fs.existsSync(clientCfgDir)) fs.mkdirSync(clientCfgDir, { recursive: true });
+    fs.writeFileSync(path.join(clientCfgDir, 'autoexec.cfg'), autoexecCommands);
+  }
 
   await openFirewallPort(config.port || 27015);
 
@@ -228,7 +325,7 @@ bot_stop 1
     '+exec', 'server.cfg',
     '+mapconfig', map,
     '+exec', map,
-    '+mp_freezetime',  config.freezetime === undefined ? '30' : String(config.freezetime),
+    '+mp_freezetime', config.freezeTime ? '30' : '0',
     '+mp_warmuptime', config.skipWarmup ? '0' : '30',
     '+mp_warmup_pausetimer', '01',
     '+mp_do_warmup_period', '0',
@@ -248,11 +345,11 @@ bot_stop 1
     ...botArgs,
   ];
 
-  fs.writeFileSync(path.join(csgoPath, 'steam_appid.txt'), '4465480');
+  fs.writeFileSync(path.join(serverRoot, 'steam_appid.txt'), '4465480');
 
-  if (onOutput) onOutput(`Starting ${config.gameMode} server on ${config.map} | Bots: ${config.botsEnabled ? 'ON' : 'OFF'}\n`);
-  serverProcess = spawn(csgoExe, args, {
-    cwd: csgoPath,
+  if (onOutput) onOutput(`Starting ${config.gameMode} server from ${serverRoot} on ${config.map} | Bots: ${config.botsEnabled ? 'ON' : 'OFF'}\n`);
+  serverProcess = spawn(srcdsExe, args, {
+    cwd: serverRoot,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, SteamAppId: '4465480', SteamGameId: '4465480' }
   });
@@ -304,13 +401,17 @@ bot_stop 1
     }
   });
 
+  serverProcess.stderr.on('data', (data) => {
+    if (onOutput) onOutput(data.toString());
+  });
+
   serverProcess.on('close', (code) => {
-    if (onOutput) onOutput(`CSGO closed with code ${code}\n`);
+    if (onOutput) onOutput(`Dedicated server closed with code ${code}\n`);
     serverProcess = null;
   });
 
   serverProcess.on('error', (err) => {
-    if (onOutput) onOutput(`Failed to launch CSGO: ${err.message}\n`);
+    if (onOutput) onOutput(`Failed to launch dedicated server: ${err.message}\n`);
     serverProcess = null;
   });
 
@@ -406,4 +507,4 @@ r_shadowlod 0
   return { success: true };
 }
 
-module.exports = { getLocalIP, openFirewallPort, installDedicatedServer, findDedicatedServer, startServer, stopServer, getServerStatus, launchCSGO };
+module.exports = { getLocalIP, openFirewallPort, installDedicatedServer, findDedicatedServer, validateDedicatedServerPath, startServer, stopServer, getServerStatus, launchCSGO };

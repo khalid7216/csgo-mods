@@ -40,7 +40,8 @@ export default function SettingsPage({ config, setConfig, addToast }) {
   const handleClearPath = async () => {
     setCSGOPath('');
     setPathStatus(null);
-    const newConfig = { ...config, csgoPath: '' };
+    const currentConfig = await window.electronAPI.loadConfig();
+    const newConfig = { ...currentConfig, csgoPath: '' };
     await window.electronAPI.saveConfig(newConfig);
     setConfig(newConfig);
     addToast('CSGO path cleared', 'info');
@@ -78,8 +79,9 @@ export default function SettingsPage({ config, setConfig, addToast }) {
       return;
     }
 
+    const currentConfig = await window.electronAPI.loadConfig();
     const newConfig = {
-      ...config,
+      ...currentConfig,
       csgoPath,
       steamApiKey,
       serverConfig

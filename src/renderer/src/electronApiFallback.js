@@ -1,5 +1,6 @@
 const DEFAULT_CONFIG = {
   csgoPath: '',
+  dedicatedServerPath: '',
   steamApiKey: '',
   serverConfig: {
     port: 27015,
@@ -190,6 +191,12 @@ function createBrowserApi() {
         : { valid: false, error: 'Path is empty' }
     ),
     selectCSGOPath: () => Promise.resolve(null),
+    validateDedicatedServerPath: (dedicatedServerPath) => Promise.resolve(
+      dedicatedServerPath
+        ? { valid: false, error: 'Dedicated server path validation requires the Windows desktop app' }
+        : { valid: false, error: 'Dedicated server path is empty' }
+    ),
+    selectDedicatedServerPath: () => Promise.resolve(null),
     saveCSGOPath: (csgoPath) => {
       const config = readJson(STORAGE_KEYS.config, clone(DEFAULT_CONFIG));
       const nextConfig = { ...config, csgoPath };
@@ -243,7 +250,7 @@ function createBrowserApi() {
       return Promise.resolve(true);
     },
     installDedicatedServer: () => desktopOnly('Dedicated server install'),
-    findDedicatedServer: () => Promise.resolve(false),
+    findDedicatedServer: () => Promise.resolve({ valid: false, error: 'Dedicated server detection requires the Windows desktop app' }),
     onDownloadProgress: (callback) => {
       listeners.downloadProgress.add(callback);
       return () => listeners.downloadProgress.delete(callback);

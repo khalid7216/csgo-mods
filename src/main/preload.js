@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   detectCSGOPath: () => ipcRenderer.invoke('detect-csgo-path'),
   validateCSGOPath: (path) => ipcRenderer.invoke('validate-csgo-path', path),
   selectCSGOPath: () => ipcRenderer.invoke('select-csgo-path'),
+  validateDedicatedServerPath: (path) => ipcRenderer.invoke('validate-dedicated-server-path', path),
+  selectDedicatedServerPath: () => ipcRenderer.invoke('select-dedicated-server-path'),
   saveCSGOPath: (path) => ipcRenderer.invoke('save-csgo-path', path),
   loadConfig: () => ipcRenderer.invoke('load-config'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),

@@ -3,6 +3,7 @@ const path = require('path');
 
 const DEFAULT_CONFIG = {
   csgoPath: '',
+  dedicatedServerPath: '',
   steamApiKey: '',
   serverConfig: {
     port: 27015,
