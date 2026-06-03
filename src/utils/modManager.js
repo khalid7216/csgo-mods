@@ -2,6 +2,7 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const Seven = require('node-7z-archive');
 const { validateUrl, validateFileSize, ALLOWED_DOMAINS, MAX_FILE_SIZE } = require('./security');
 
 const MODS_PATH = path.join(__dirname, '../../mods-cache/mods.json');
@@ -245,10 +246,6 @@ async function downloadMap(map, csgoPath, onProgress) {
   return downloadFile(map, csgoPath, onProgress, 'map');
 }
 
-async function downloadSkin(skin, csgoPath, onProgress) {
-  return downloadFile(skin, csgoPath, onProgress, 'skin');
-}
-
 async function installMap(mapPath, csgoPath) {
   const mapsDir = path.join(csgoPath, 'maps');
   if (!fs.existsSync(mapsDir)) fs.mkdirSync(mapsDir, { recursive: true });
@@ -296,6 +293,217 @@ async function removeMod(modId, modType) {
   mods[modType].splice(index, 1);
   saveMods(mods);
   return { success: true };
+}
+
+// ── Archive extraction helpers ──────────────────────────────────────────────
+
+function find7zBinary() {
+  const candidates = [
+    'C:\\Program Files\\7-Zip\\7z.exe',
+    'C:\\Program Files (x86)\\7-Zip\\7z.exe',
+    path.join(process.env.ProgramFiles || '', '7-Zip', '7z.exe'),
+    path.join(process.env['ProgramFiles(x86)'] || '', '7-Zip', '7z.exe'),
+  ];
+  // Also check PATH
+  const pathDirs = (process.env.PATH || '').split(';');
+  for (const dir of pathDirs) {
+    try {
+      const exe = path.join(dir.trim(), '7z.exe');
+      if (fs.existsSync(exe)) return exe;
+    } catch {}
+  }
+  for (const p of candidates) {
+    if (p && fs.existsSync(p)) return p;
+  }
+  return '7z.exe'; // fallback – hope it's on PATH
+}
+
+const CSGO_CLIENT_PATH = 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\csgo legacy';
+
+function findSkinFiles(dir) {
+  const results = [];
+  function walk(currentDir) {
+    let entries;
+    try { entries = fs.readdirSync(currentDir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (
+        entry.name.endsWith('.vpk') ||
+        entry.name.endsWith('.vtf') ||
+        entry.name.endsWith('.vmt')
+      ) {
+        results.push(fullPath);
+      }
+    }
+  }
+  if (fs.existsSync(dir)) walk(dir);
+  return results;
+}
+
+function copyMaintainingStructure(filePath, baseDir, destDir) {
+  const relative = path.relative(baseDir, filePath);
+  const dest = path.join(destDir, relative);
+  const destParent = path.dirname(dest);
+  if (!fs.existsSync(destParent)) fs.mkdirSync(destParent, { recursive: true });
+  fs.copyFileSync(filePath, dest);
+  return dest;
+}
+
+function copyEntireFolder(src, dest) {
+  if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyEntireFolder(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+async function downloadSkin(skin, csgoPath, onProgress) {
+  const tempRoot = path.join(__dirname, '../../mods-cache/temp');
+  const workDir = path.join(tempRoot, `skin_${skin.id}_${Date.now()}`);
+  fs.mkdirSync(workDir, { recursive: true });
+
+  // 1. Download to temp folder
+  const filename = `${skin.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${skin.id}`;
+  const downloadUrl = skin.files?.[0]?.url || skin.downloadUrl;
+
+  const urlValidation = validateUrl(downloadUrl);
+  if (!urlValidation.valid) {
+    throw new Error(`Invalid download URL: ${urlValidation.error}`);
+  }
+
+  if (onProgress) onProgress({ stage: 'download', percent: 10, message: 'Download started' });
+
+  const downloadedPath = await new Promise((resolve, reject) => {
+    const client = downloadUrl.startsWith('https') ? https : http;
+    const req = client.get(downloadUrl, { headers: { 'User-Agent': 'CSGO-Mod-Manager/1.0' } }, (res) => {
+      if (res.statusCode === 302 || res.statusCode === 301) {
+        // Follow redirect
+        client.get(res.headers.location, { headers: { 'User-Agent': 'CSGO-Mod-Manager/1.0' } }, (res2) => {
+          if (res2.statusCode !== 200) {
+            reject(new Error(`Download failed with status ${res2.statusCode}`));
+            return;
+          }
+          const totalSize = parseInt(res2.headers['content-length'], 10);
+          let downloaded = 0;
+          const filePath = path.join(workDir, filename);
+          const stream = fs.createWriteStream(filePath);
+          res2.on('data', (chunk) => {
+            downloaded += chunk.length;
+            if (onProgress && totalSize) {
+              onProgress({ stage: 'download', percent: 10 + Math.round((downloaded / totalSize) * 20), message: `Downloading ${Math.round(downloaded / totalSize * 100)}%` });
+            }
+          });
+          res2.pipe(stream);
+          stream.on('finish', () => { stream.close(); resolve(filePath); });
+        }).on('error', reject);
+        return;
+      }
+      if (res.statusCode !== 200) {
+        reject(new Error(`Download failed with status ${res.statusCode}`));
+        return;
+      }
+      const totalSize = parseInt(res.headers['content-length'], 10);
+      let downloaded = 0;
+      const filePath = path.join(workDir, filename);
+      const stream = fs.createWriteStream(filePath);
+      res.on('data', (chunk) => {
+        downloaded += chunk.length;
+        if (onProgress && totalSize) {
+          onProgress({ stage: 'download', percent: 10 + Math.round((downloaded / totalSize) * 20), message: `Downloading ${Math.round(downloaded / totalSize * 100)}%` });
+        }
+      });
+      res.pipe(stream);
+      stream.on('finish', () => { stream.close(); resolve(filePath); });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+
+  if (onProgress) onProgress({ stage: 'downloaded', percent: 30, message: 'Download complete, checking file type' });
+
+  // 2. Detect file type
+  const ext = path.extname(downloadedPath).toLowerCase();
+  const isArchive = ['.rar', '.zip', '.7z'].includes(ext);
+
+  let fileList = [downloadedPath];
+  let extractDir = workDir;
+
+  if (isArchive) {
+    // 3. Extract archive
+    if (onProgress) onProgress({ stage: 'extracting', percent: 35, message: 'Extracting archive' });
+
+    extractDir = path.join(workDir, 'extracted');
+    fs.mkdirSync(extractDir, { recursive: true });
+
+    const sevenBin = find7zBinary();
+    await Seven.extractFull(downloadedPath, extractDir, { $bin: sevenBin });
+
+    if (onProgress) onProgress({ stage: 'extracted', percent: 55, message: 'Extraction complete, finding skin files' });
+  }
+
+  // 4. Find skin files
+  const skinFiles = findSkinFiles(extractDir);
+
+  if (onProgress) onProgress({ stage: 'finding', percent: 65, message: `Found ${skinFiles.length} skin files` });
+
+  // 5. Install to CSGO client
+  const csgoDir = path.join(CSGO_CLIENT_PATH, 'csgo');
+  if (!fs.existsSync(csgoDir)) {
+    // Fallback to csgoPath if client path doesn't exist
+    const fallbackDir = path.join(csgoPath, 'csgo');
+    if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+    if (onProgress) onProgress({ stage: 'installing', percent: 70, message: 'Installing to server CSGO directory' });
+  }
+
+  if (onProgress) onProgress({ stage: 'installing', percent: 70, message: 'Installing skin files' });
+
+  const vpkFiles = skinFiles.filter(f => f.endsWith('.vpk'));
+  const vtfVmtFiles = skinFiles.filter(f => f.endsWith('.vtf') || f.endsWith('.vmt'));
+
+  if (vpkFiles.length > 0) {
+    for (const vpk of vpkFiles) {
+      const dest = path.join(csgoDir, path.basename(vpk));
+      fs.copyFileSync(vpk, dest);
+    }
+  } else if (vtfVmtFiles.length > 0) {
+    const materialsDir = path.join(csgoDir, 'materials');
+    if (!fs.existsSync(materialsDir)) fs.mkdirSync(materialsDir, { recursive: true });
+    for (const f of vtfVmtFiles) {
+      copyMaintainingStructure(f, extractDir, materialsDir);
+    }
+  } else {
+    // Copy entire extracted folder
+    const dest = path.join(csgoDir, 'materials');
+    copyEntireFolder(extractDir, dest);
+  }
+
+  // 6. Save to mods registry
+  const mods = getMods();
+  mods.skins.push({
+    id: skin.id,
+    name: skin.name,
+    fileName: filename,
+    filePath: downloadedPath,
+    skinFiles,
+    profileUrl: skin.profileUrl,
+    installedAt: new Date().toISOString()
+  });
+  saveMods(mods);
+
+  // 7. Cleanup temp
+  try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+
+  if (onProgress) onProgress({ stage: 'complete', percent: 100, message: 'Install complete' });
+
+  return { success: true, filePath: downloadedPath, skinFiles };
 }
 
 module.exports = {
