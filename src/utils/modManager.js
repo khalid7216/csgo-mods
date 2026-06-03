@@ -2,7 +2,7 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const Seven = require('node-7z-archive');
+const { execFile } = require('child_process');
 const { validateUrl, validateFileSize, ALLOWED_DOMAINS, MAX_FILE_SIZE } = require('./security');
 const { DEFAULT_MODS, ensureCacheFile, getCacheDir, getCachePath } = require('./appPaths');
 
@@ -316,6 +316,29 @@ function find7zBinary() {
   return '7z.exe'; // fallback – hope it's on PATH
 }
 
+function extractArchive(archivePath, outputDir) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      find7zBinary(),
+      ['x', archivePath, `-o${outputDir}`, '-y'],
+      { windowsHide: true, timeout: 300000 },
+      (error, stdout, stderr) => {
+        if (error) {
+          if (error.code === 'ENOENT') {
+            reject(new Error('7-Zip is required to extract archives. Install 7-Zip or add 7z.exe to PATH.'));
+            return;
+          }
+
+          reject(new Error((stderr || stdout || error.message).trim()));
+          return;
+        }
+
+        resolve({ stdout, stderr });
+      }
+    );
+  });
+}
+
 const CSGO_CLIENT_PATH = 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\csgo legacy';
 
 function findSkinFiles(dir) {
@@ -364,7 +387,7 @@ function copyEntireFolder(src, dest) {
 }
 
 async function downloadSkin(skin, csgoPath, onProgress) {
-  const tempRoot = path.join(__dirname, '../../mods-cache/temp');
+  const tempRoot = path.join(getCacheDir(), 'temp');
   const workDir = path.join(tempRoot, `skin_${skin.id}_${Date.now()}`);
   fs.mkdirSync(workDir, { recursive: true });
 
@@ -441,8 +464,7 @@ async function downloadSkin(skin, csgoPath, onProgress) {
     extractDir = path.join(workDir, 'extracted');
     fs.mkdirSync(extractDir, { recursive: true });
 
-    const sevenBin = find7zBinary();
-    await Seven.extractFull(downloadedPath, extractDir, { $bin: sevenBin });
+    await extractArchive(downloadedPath, extractDir);
 
     if (onProgress) onProgress({ stage: 'extracted', percent: 55, message: 'Extraction complete, finding skin files' });
   }
@@ -453,11 +475,10 @@ async function downloadSkin(skin, csgoPath, onProgress) {
   if (onProgress) onProgress({ stage: 'finding', percent: 65, message: `Found ${skinFiles.length} skin files` });
 
   // 5. Install to CSGO client
-  const csgoDir = path.join(CSGO_CLIENT_PATH, 'csgo');
+  let csgoDir = path.join(CSGO_CLIENT_PATH, 'csgo');
   if (!fs.existsSync(csgoDir)) {
-    // Fallback to csgoPath if client path doesn't exist
-    const fallbackDir = path.join(csgoPath, 'csgo');
-    if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+    csgoDir = path.join(csgoPath, 'csgo');
+    if (!fs.existsSync(csgoDir)) fs.mkdirSync(csgoDir, { recursive: true });
     if (onProgress) onProgress({ stage: 'installing', percent: 70, message: 'Installing to server CSGO directory' });
   }
 
