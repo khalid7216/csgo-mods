@@ -3,11 +3,20 @@ const path = require('path');
 
 const DEFAULT_CONFIG = {
   csgoPath: '',
+  steamId: '',
   steamApiKey: '',
   serverConfig: {
+    map: 'de_dust2',
+    gameMode: 'casual',
+    botsEnabled: false,
+    freezeTime: false,
+    skipWarmup: true,
+    friendlyFire: true,
     port: 27015,
     maxPlayers: 16,
-    hostname: 'CSGO Mod Manager Server'
+    hostname: 'CSGO Mod Manager Server',
+    rconPassword: 'changeme',
+    customCommands: ''
   }
 };
 

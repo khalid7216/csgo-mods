@@ -1,10 +1,19 @@
 const DEFAULT_CONFIG = {
   csgoPath: '',
+  steamId: '',
   steamApiKey: '',
   serverConfig: {
+    map: 'de_dust2',
+    gameMode: 'casual',
+    botsEnabled: false,
+    freezeTime: false,
+    skipWarmup: true,
+    friendlyFire: true,
     port: 27015,
     maxPlayers: 16,
-    hostname: 'CSGO Mod Manager Server'
+    hostname: 'CSGO Mod Manager Server',
+    rconPassword: 'changeme',
+    customCommands: ''
   }
 };
 
@@ -196,14 +205,25 @@ function createBrowserApi() {
       writeJson(STORAGE_KEYS.config, nextConfig);
       return Promise.resolve(true);
     },
-    loadConfig: () => Promise.resolve({
-      ...clone(DEFAULT_CONFIG),
-      ...readJson(STORAGE_KEYS.config, clone(DEFAULT_CONFIG))
-    }),
+    loadConfig: () => {
+      const storedConfig = readJson(STORAGE_KEYS.config, clone(DEFAULT_CONFIG));
+      return Promise.resolve({
+        ...clone(DEFAULT_CONFIG),
+        ...storedConfig,
+        serverConfig: {
+          ...clone(DEFAULT_CONFIG.serverConfig),
+          ...(storedConfig.serverConfig || {})
+        }
+      });
+    },
     saveConfig: (config) => {
       writeJson(STORAGE_KEYS.config, {
         ...clone(DEFAULT_CONFIG),
-        ...config
+        ...config,
+        serverConfig: {
+          ...clone(DEFAULT_CONFIG.serverConfig),
+          ...(config.serverConfig || {})
+        }
       });
       return Promise.resolve(true);
     },
@@ -231,6 +251,20 @@ function createBrowserApi() {
       const url = `https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid=4465480&key=${encodeURIComponent(apiKey)}&steamid=${encodeURIComponent(steamId)}`;
       const data = await fetchJson(url);
       return data.playerstats?.error ? { error: data.playerstats.error } : data.playerstats;
+    },
+    fetchPlayerProfile: async (steamId, apiKey) => {
+      const url = `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=${encodeURIComponent(apiKey)}&steamids=${encodeURIComponent(steamId)}`;
+      const data = await fetchJson(url);
+      const player = data.response?.players?.[0];
+      if (!player) return { error: 'Steam profile not found' };
+      return {
+        steamId: player.steamid,
+        personaName: player.personaname || 'Steam Player',
+        avatar: player.avatarfull || player.avatarmedium || player.avatar || '',
+        profileUrl: player.profileurl || `https://steamcommunity.com/profiles/${steamId}`,
+        countryCode: player.loccountrycode || '',
+        lastLogoff: player.lastlogoff || null
+      };
     },
     parseStats: (rawStats) => Promise.resolve(parseStats(rawStats)),
     getCachedStats: () => Promise.resolve(readJson(STORAGE_KEYS.stats, clone(DEFAULT_STATS))),

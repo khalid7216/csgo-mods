@@ -1,12 +1,26 @@
 import React, { useState, useEffect } from 'react';
 
+const DEFAULT_SERVER_CONFIG = {
+  map: 'de_dust2',
+  gameMode: 'casual',
+  botsEnabled: false,
+  freezeTime: false,
+  skipWarmup: true,
+  friendlyFire: true,
+  port: 27015,
+  maxPlayers: 16,
+  hostname: 'CSGO Mod Manager Server',
+  rconPassword: 'changeme',
+  customCommands: ''
+};
+
 export default function SettingsPage({ config, setConfig, addToast }) {
   const [csgoPath, setCSGOPath] = useState(config.csgoPath || '');
+  const [steamId, setSteamId] = useState(config.steamId || '');
   const [steamApiKey, setSteamApiKey] = useState(config.steamApiKey || '');
-  const [serverConfig, setServerConfig] = useState(config.serverConfig || {
-    port: 27015,
-    maxPlayers: 16,
-    hostname: 'CSGO Mod Manager Server'
+  const [serverConfig, setServerConfig] = useState({
+    ...DEFAULT_SERVER_CONFIG,
+    ...(config.serverConfig || {})
   });
   const [detecting, setDetecting] = useState(false);
   const [pathStatus, setPathStatus] = useState(null);
@@ -81,6 +95,7 @@ export default function SettingsPage({ config, setConfig, addToast }) {
     const newConfig = {
       ...config,
       csgoPath,
+      steamId: steamId.trim(),
       steamApiKey,
       serverConfig
     };
@@ -155,8 +170,18 @@ export default function SettingsPage({ config, setConfig, addToast }) {
         </div>
 
         <div className="bg-dark-900 rounded-xl border border-dark-800 p-6">
-          <h3 className="font-semibold mb-4">Steam API Key</h3>
+          <h3 className="font-semibold mb-4">Steam Stats</h3>
           <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-dark-400 mb-1">Steam ID 64</label>
+              <input
+                type="text"
+                value={steamId}
+                onChange={(e) => setSteamId(e.target.value)}
+                placeholder="76561198XXXXXXXXX"
+                className="w-full bg-dark-800 border border-dark-700 rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500 font-mono text-sm"
+              />
+            </div>
             <input
               type="password"
               value={steamApiKey}

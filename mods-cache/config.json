@@ -1,10 +1,19 @@
 {
   "csgoPath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\csgo legacy",
-  "srcdsPath": "C:\\srcds",
+  "steamId": "",
   "steamApiKey": "",
   "serverConfig": {
-    "port": 27016,
+    "map": "de_dust2",
+    "gameMode": "competitive",
+    "botsEnabled": false,
+    "freezeTime": false,
+    "skipWarmup": true,
+    "friendlyFire": true,
     "maxPlayers": 16,
-    "hostname": "CSGO Mod Manager Server"
-  }
+    "hostname": "CSGO Mod Manager Server",
+    "port": 27016,
+    "rconPassword": "changeme",
+    "customCommands": "mp_restartgame 1\nmp_freezetime 0\nmp_roundtime 3\nmp_maxrounds 30"
+  },
+  "srcdsPath": "C:\\srcds"
 }

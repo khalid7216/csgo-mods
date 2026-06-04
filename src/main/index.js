@@ -5,7 +5,7 @@ const { detectCSGOPath, validateCSGOPath, saveCSGOPath, loadCSGOPath } = require
 const { getGameBananaMaps, getGameBananaSkins, downloadMap, downloadSkin, installMap, getInstalledMods, removeMod } = require('../utils/modManager');
 const { createVMT, createVPK, installSkin } = require('../utils/skinManager');
 const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO, installDedicatedServer, findDedicatedServer } = require('../utils/lanServer');
-const { fetchPlayerStats, parseStats, getCachedStats } = require('../utils/statsParser');
+const { fetchPlayerStats, fetchPlayerProfile, parseStats, getCachedStats } = require('../utils/statsParser');
 const { DEFAULT_CONFIG, DEFAULT_MODS, DEFAULT_STATS, ensureCacheFile, getCachePath } = require('../utils/appPaths');
 const {
   validatePath,
@@ -328,6 +328,18 @@ ipcMain.handle('fetch-player-stats', async (_, steamId, apiKey) => {
     throw new Error(apiKeyValidation.error);
   }
   return await fetchPlayerStats(steamIdValidation.steamId, apiKeyValidation.apiKey);
+});
+
+ipcMain.handle('fetch-player-profile', async (_, steamId, apiKey) => {
+  const steamIdValidation = validateSteamId(steamId);
+  if (!steamIdValidation.valid) {
+    throw new Error(steamIdValidation.error);
+  }
+  const apiKeyValidation = validateApiKey(apiKey);
+  if (!apiKeyValidation.valid) {
+    throw new Error(apiKeyValidation.error);
+  }
+  return await fetchPlayerProfile(steamIdValidation.steamId, apiKeyValidation.apiKey);
 });
 
 ipcMain.handle('parse-stats', async (_, rawStats) => {

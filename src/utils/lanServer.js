@@ -19,6 +19,36 @@ const DS_SEARCH_PATHS = [
   'C:\\steamcmd\\csgo_ds'
 ];
 
+const NO_WARMUP_COMMANDS = [
+  'mp_warmuptime 0',
+  'mp_warmuptime_all_players_connected 0',
+  'mp_warmup_pausetimer 0',
+  'mp_do_warmup_period 0',
+  'mp_warmup_end'
+];
+
+function cleanConsoleValue(value, fallback = '') {
+  const cleaned = String(value || '')
+    .replace(/[\r\n"]/g, '')
+    .trim();
+  return cleaned || fallback;
+}
+
+function normalizeCustomCommands(commands) {
+  if (!commands || typeof commands !== 'string') return [];
+
+  return commands
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('//') && !line.startsWith('#'))
+    .slice(0, 30)
+    .map((line) => line.slice(0, 180));
+}
+
+function asCfgLines(commands) {
+  return commands.length ? `${commands.join('\n')}\n` : '';
+}
+
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -116,8 +146,18 @@ async function startServer(csgoPath, config, onOutput) {
   if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
 
   const map = config.map || 'de_dust2';
+  const hostname = cleanConsoleValue(config.hostname, 'CSGO Mod Manager Server');
+  const rconPassword = cleanConsoleValue(config.rconPassword, 'changeme');
+  const freezeTime = config.freezeTime ? '30' : '0';
+  const friendlyFire = config.friendlyFire ? '1' : '0';
+  const noWarmupCommands = config.skipWarmup === false ? [] : NO_WARMUP_COMMANDS;
+  const customCommands = normalizeCustomCommands(config.customCommands);
+  const botCfgCommands = config.botsEnabled
+    ? ['bot_quota 5', 'bot_difficulty 1', 'bot_join_after_player 1', 'bot_quota_mode fill', 'bot_allow_rogues 0']
+    : ['bot_quota 0', 'bot_kick', 'bot_stop 1', 'bot_join_after_player 1', 'bot_quota_mode normal'];
 
-  const cfgContent = `hostname "${config.hostname || 'CSGO Mod Manager Server'}"
+  const cfgContent = `hostname "${hostname}"
+rcon_password "${rconPassword}"
 sv_lan 1
 sv_steamauth 0
 sv_forcepreload 1
@@ -158,49 +198,34 @@ bot_autodifficulty_threshold_high 0
 bot_autodifficulty_threshold_low 0
 bot_allow_rogues 0
 bot_chatter off
-${config.botsEnabled ? '' : 'bot_kick\nbot_stop 1\nbot_join_after_player 1'}
-mp_warmuptime 0
-mp_do_warmup_period 0
-mp_freezetime 0
-mp_warmup_end
+${asCfgLines(botCfgCommands)}${asCfgLines(noWarmupCommands)}mp_freezetime ${freezeTime}
+mp_friendlyfire ${friendlyFire}
+${asCfgLines(customCommands)}
 exec ${map}.cfg
 mp_restartgame 1
 `;
   fs.writeFileSync(path.join(cfgDir, 'server.cfg'), cfgContent);
 
   // Create map-specific CFG - CSGO auto-executes [mapname].cfg on map load
-  const mapCfgContent = `mp_warmup_end
-mp_warmuptime 0
-mp_warmup_pausetimer 0
-mp_freezetime 0
-mp_friendlyfire 0
+  const mapCfgContent = `${asCfgLines(noWarmupCommands)}mp_freezetime ${freezeTime}
+mp_friendlyfire ${friendlyFire}
 mp_autoteambalance 0
 mp_limitteams 0
-bot_quota 0
-bot_kick
-bot_stop 1
+${asCfgLines(botCfgCommands)}${asCfgLines(customCommands)}
 mp_restartgame 1
 `;
   fs.writeFileSync(path.join(cfgDir, `${map}.cfg`), mapCfgContent);
 
-  const autoexecCommands = `mp_freezetime 0
-mp_friendlyfire 0
-mp_warmuptime 0
-mp_warmup_end
+  const autoexecCommands = `mp_freezetime ${freezeTime}
+mp_friendlyfire ${friendlyFire}
+${asCfgLines(noWarmupCommands)}
 mp_autoteambalance 0
 mp_limitteams 0
-bot_quota 0
-bot_kick
-bot_stop 1
+${asCfgLines(botCfgCommands)}${asCfgLines(customCommands)}
 `;
 
   // Write autoexec.cfg for SRCDS
   fs.writeFileSync(path.join(cfgDir, 'autoexec.cfg'), autoexecCommands);
-
-  // Write autoexec.cfg for CSGO client
-  const clientCfgDir = 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\csgo legacy\\csgo\\cfg';
-  if (!fs.existsSync(clientCfgDir)) fs.mkdirSync(clientCfgDir, { recursive: true });
-  fs.writeFileSync(path.join(clientCfgDir, 'autoexec.cfg'), autoexecCommands);
 
   await openFirewallPort(config.port || 27015);
 
@@ -220,6 +245,7 @@ bot_stop 1
     '-console',
     '-usercon',
     '+sv_lan', '1',
+    ...gameModeArgs[config.gameMode || 'casual'],
     '+map', config.map || 'de_dust2',
     '-port', String(config.port || 27015),
     '+maxplayers', String(config.maxPlayers || 16),
@@ -228,11 +254,8 @@ bot_stop 1
     '+exec', 'server.cfg',
     '+mapconfig', map,
     '+exec', map,
-    '+mp_freezetime',  config.freezetime === undefined ? '30' : String(config.freezetime),
-    '+mp_warmuptime', config.skipWarmup ? '0' : '30',
-    '+mp_warmup_pausetimer', '01',
-    '+mp_do_warmup_period', '0',
-    '+mp_friendlyfire', config.friendlyFire ? '1' : '0',
+    '+mp_freezetime', freezeTime,
+    '+mp_friendlyfire', friendlyFire,
     '+mp_autoteambalance', '0',
     '+mp_limitteams', '0',
     '+mp_autokick', '0',
@@ -244,7 +267,6 @@ bot_stop 1
     '+sv_minupdaterate', '20',
     '+sv_maxupdaterate', '64',
     '+bot_quota_mode', 'fill',
-    ...gameModeArgs[config.gameMode || 'casual'],
     ...botArgs,
   ];
 
@@ -262,6 +284,29 @@ bot_stop 1
     try { if (serverProcess && serverProcess.stdin) serverProcess.stdin.write(cmd); } catch {}
   };
 
+  const sendCommands = (commands) => {
+    for (const command of commands) {
+      send(`${command}\n`);
+    }
+  };
+
+  const startupCommands = [
+    ...noWarmupCommands,
+    `mp_freezetime ${freezeTime}`,
+    `mp_friendlyfire ${friendlyFire}`,
+    'mp_autoteambalance 0',
+    'mp_limitteams 0',
+    'mp_autokick 0',
+    ...botCfgCommands
+  ];
+
+  for (const delay of [1000, 3000, 6000]) {
+    setTimeout(() => sendCommands(startupCommands), delay);
+  }
+  if (customCommands.length) {
+    setTimeout(() => sendCommands(customCommands), 7000);
+  }
+
   let playerJoined = false;
 
   serverProcess.stdout.on('data', (data) => {
@@ -274,16 +319,15 @@ bot_stop 1
       if (onOutput) onOutput('[SERVER] Player detected - running join sequence\n');
 
       setTimeout(() => {
-        send('mp_warmup_end\n');
-        send('mp_warmuptime 0\n');
+        sendCommands(noWarmupCommands);
       }, 500);
 
       setTimeout(() => {
-        send('mp_friendlyfire 0\n');
+        send(`mp_friendlyfire ${friendlyFire}\n`);
       }, 1500);
 
       setTimeout(() => {
-        send('mp_freezetime 0\n');
+        send(`mp_freezetime ${freezeTime}\n`);
         send('mp_autoteambalance 0\n');
         send('mp_limitteams 0\n');
       }, 2500);
@@ -302,6 +346,10 @@ bot_stop 1
         send('bot_quota_mode fill\n');
       }, 3500);
     }
+  });
+
+  serverProcess.stderr.on('data', (data) => {
+    if (onOutput) onOutput(data.toString());
   });
 
   serverProcess.on('close', (code) => {
@@ -379,7 +427,6 @@ r_shadowlod 0
   fs.writeFileSync(path.join(cfgDir, 'autoexec.cfg'), autoexecContent);
 
   const defaultFlags = [
-    '-beta', 'csgo_legacy',
     '-insecure',
     '-novid',
     '-console',

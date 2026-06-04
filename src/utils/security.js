@@ -58,12 +58,12 @@ function validateSteamId(steamId) {
     return { valid: false, error: 'Invalid Steam ID' };
   }
 
-  const steamIdNum = parseInt(steamId, 10);
-  if (isNaN(steamIdNum) || steamIdNum < 1 || steamIdNum > 99999999999999999) {
-    return { valid: false, error: 'Invalid Steam ID format' };
+  const normalizedSteamId = steamId.trim();
+  if (!/^\d{15,20}$/.test(normalizedSteamId)) {
+    return { valid: false, error: 'Enter a valid SteamID64' };
   }
 
-  return { valid: true, steamId: steamIdNum.toString() };
+  return { valid: true, steamId: normalizedSteamId };
 }
 
 function validateApiKey(apiKey) {

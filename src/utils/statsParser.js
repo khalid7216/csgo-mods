@@ -2,27 +2,64 @@ const https = require('https');
 const fs = require('fs');
 const { getCachePath } = require('./appPaths');
 
-async function fetchPlayerStats(steamId, apiKey) {
-  return new Promise((resolve, reject) => {
-    const url = `https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?appid=4465480&key=${apiKey}&steamid=${steamId}`;
+const CSGO_APP_ID = '4465480';
 
+function requestJson(url) {
+  return new Promise((resolve, reject) => {
     https.get(url, (res) => {
       let data = '';
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => {
         try {
-          const parsed = JSON.parse(data);
-          if (parsed.playerstats?.error) {
-            resolve({ error: parsed.playerstats.error });
-          } else {
-            resolve(parsed.playerstats);
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(`Steam API request failed with ${res.statusCode}`));
+            return;
           }
+          const parsed = JSON.parse(data);
+          resolve(parsed);
         } catch (e) {
           reject(e);
         }
       });
     }).on('error', reject);
   });
+}
+
+async function fetchPlayerStats(steamId, apiKey) {
+  const params = new URLSearchParams({
+    appid: CSGO_APP_ID,
+    key: apiKey,
+    steamid: steamId
+  });
+  const parsed = await requestJson(`https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/?${params.toString()}`);
+
+  if (parsed.playerstats?.error) {
+    return { error: parsed.playerstats.error };
+  }
+
+  return parsed.playerstats;
+}
+
+async function fetchPlayerProfile(steamId, apiKey) {
+  const params = new URLSearchParams({
+    key: apiKey,
+    steamids: steamId
+  });
+  const parsed = await requestJson(`https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?${params.toString()}`);
+  const player = parsed.response?.players?.[0];
+
+  if (!player) {
+    return { error: 'Steam profile not found' };
+  }
+
+  return {
+    steamId: player.steamid,
+    personaName: player.personaname || 'Steam Player',
+    avatar: player.avatarfull || player.avatarmedium || player.avatar || '',
+    profileUrl: player.profileurl || `https://steamcommunity.com/profiles/${steamId}`,
+    countryCode: player.loccountrycode || '',
+    lastLogoff: player.lastlogoff || null
+  };
 }
 
 function parseStats(rawStats) {
@@ -94,4 +131,4 @@ function saveStats(stats) {
   fs.writeFileSync(getCachePath('stats.json'), JSON.stringify(stats, null, 2));
 }
 
-module.exports = { fetchPlayerStats, parseStats, getCachedStats, saveStats };
+module.exports = { fetchPlayerStats, fetchPlayerProfile, parseStats, getCachedStats, saveStats };

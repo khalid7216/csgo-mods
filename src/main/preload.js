@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getServerStatus: () => ipcRenderer.invoke('get-server-status'),
   launchCSGO: (flags) => ipcRenderer.invoke('launch-csgo', flags),
   fetchPlayerStats: (steamId, apiKey) => ipcRenderer.invoke('fetch-player-stats', steamId, apiKey),
+  fetchPlayerProfile: (steamId, apiKey) => ipcRenderer.invoke('fetch-player-profile', steamId, apiKey),
   parseStats: (rawStats) => ipcRenderer.invoke('parse-stats', rawStats),
   getCachedStats: () => ipcRenderer.invoke('get-cached-stats'),
   saveStats: (stats) => ipcRenderer.invoke('save-stats', stats),

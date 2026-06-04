@@ -1,50 +1,189 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Copy, Play, Power, Server, TerminalSquare, Wifi, Wrench } from 'lucide-react';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
+import { cn } from '../lib/utils';
+import { DEFAULT_SERVER_CONFIG, getFirstZodError, normalizeServerConfig, serverConfigSchema } from '../lib/validation';
 
-export default function LANPage({ config, addToast }) {
+const COMMAND_SUGGESTIONS = [
+  { command: 'mp_warmup_end', hint: 'End warmup' },
+  { command: 'mp_warmuptime 0', hint: 'No warmup timer' },
+  { command: 'mp_freezetime 0', hint: 'No freeze time' },
+  { command: 'mp_restartgame 1', hint: 'Restart match' },
+  { command: 'mp_roundtime 3', hint: 'Round minutes' },
+  { command: 'mp_roundtime_defuse 3', hint: 'Defuse minutes' },
+  { command: 'mp_maxrounds 30', hint: 'Match length' },
+  { command: 'mp_halftime 0', hint: 'No halftime' },
+  { command: 'mp_friendlyfire 1', hint: 'Team damage on' },
+  { command: 'mp_friendlyfire 0', hint: 'Team damage off' },
+  { command: 'mp_autoteambalance 0', hint: 'No auto balance' },
+  { command: 'mp_limitteams 0', hint: 'No team limit' },
+  { command: 'bot_kick', hint: 'Remove bots' },
+  { command: 'bot_quota 0', hint: 'No bots' },
+  { command: 'bot_quota 5', hint: 'Five bots' },
+  { command: 'bot_difficulty 2', hint: 'Bot skill' },
+  { command: 'sv_cheats 0', hint: 'Cheats off' },
+  { command: 'sv_cheats 1', hint: 'Cheats on' },
+  { command: 'sv_grenade_trajectory 1', hint: 'Nade practice' },
+  { command: 'sv_infinite_ammo 1', hint: 'Practice ammo' },
+  { command: 'sv_showimpacts 1', hint: 'Bullet impacts' },
+  { command: 'sv_alltalk 1', hint: 'Open voice' },
+  { command: 'sv_pure 0', hint: 'Custom files' },
+  { command: 'changelevel de_mirage', hint: 'Switch map' },
+  { command: 'say Server ready', hint: 'Server chat' }
+];
+
+const maps = [
+  'de_dust2',
+  'de_inferno',
+  'de_mirage',
+  'de_nuke',
+  'de_train',
+  'de_overpass',
+  'de_cbble',
+  'de_cache',
+  'de_canals',
+  'cs_office',
+  'cs_italy',
+  'cs_assault'
+];
+
+const gameModes = [
+  { id: 'casual', label: 'Casual' },
+  { id: 'competitive', label: 'Competitive' },
+  { id: 'deathmatch', label: 'Deathmatch' },
+  { id: 'retake', label: 'Retake' }
+];
+
+function getCurrentCommandQuery(value, caretPosition) {
+  const beforeCaret = value.slice(0, caretPosition ?? value.length);
+  const currentLine = beforeCaret.split(/\r?\n/).pop() || '';
+  return currentLine.trimStart().split(/\s+/)[0].toLowerCase();
+}
+
+function ToggleRow({ title, caption, checked, onChange }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className="flex w-full items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-3 text-left transition-colors hover:bg-muted"
+    >
+      <span>
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="mt-0.5 block text-xs text-muted-foreground">{caption}</span>
+      </span>
+      <span
+        className={cn(
+          'relative h-6 w-11 rounded-full border transition-colors',
+          checked ? 'border-primary bg-primary' : 'border-border bg-background'
+        )}
+      >
+        <span
+          className={cn(
+            'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform',
+            checked ? 'translate-x-5' : 'translate-x-0.5'
+          )}
+        />
+      </span>
+    </button>
+  );
+}
+
+export default function LANPage({ config, setConfig, addToast }) {
+  const commandsRef = useRef(null);
   const [localIP, setLocalIP] = useState('');
   const [serverRunning, setServerRunning] = useState(false);
   const [serverOutput, setServerOutput] = useState([]);
-  const [serverConfig, setServerConfig] = useState({
-    map: 'de_dust2',
-    gameMode: 'casual',
-    botsEnabled: false,
-    freezeTime: false,
-    skipWarmup: true,
-    friendlyFire: true,
-    maxPlayers: 16,
-    hostname: 'CSGO Mod Manager Server',
-    port: 27015,
-    rconPassword: 'changeme'
-  });
+  const [serverConfig, setServerConfig] = useState(() => normalizeServerConfig(config.serverConfig));
   const [loading, setLoading] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [dsInstalled, setDsInstalled] = useState(false);
+  const [commandQuery, setCommandQuery] = useState('');
 
-  const maps = ['de_dust2', 'de_inferno', 'de_mirage', 'de_nuke', 'de_train', 'de_overpass', 'de_cbble', 'de_cache', 'de_canals', 'cs_office', 'cs_italy', 'cs_assault'];
+  const commandSuggestions = useMemo(() => {
+    const query = commandQuery.trim().toLowerCase();
+    const matches = query
+      ? COMMAND_SUGGESTIONS.filter((item) => item.command.toLowerCase().startsWith(query))
+      : COMMAND_SUGGESTIONS.slice(0, 8);
 
-  const gameModes = [
-    { id: 'casual', label: 'Casual' },
-    { id: 'competitive', label: 'Competitive' },
-    { id: 'deathmatch', label: 'Deathmatch' },
-    { id: 'retake', label: 'Retake' },
-  ];
+    return matches.slice(0, 8);
+  }, [commandQuery]);
 
   useEffect(() => {
     window.electronAPI.getLocalIP().then(setLocalIP);
-
     window.electronAPI.onServerOutput((data) => {
-      setServerOutput((prev) => [...prev.slice(-100), data]);
+      setServerOutput((prev) => [...prev.slice(-120), data]);
     });
-
     window.electronAPI.findDedicatedServer().then(setDsInstalled);
   }, []);
+
+  useEffect(() => {
+    setServerConfig(normalizeServerConfig(config.serverConfig));
+  }, [config.serverConfig]);
+
+  const updateServerConfig = (patch) => {
+    setServerConfig((current) => ({ ...current, ...patch }));
+  };
+
+  const saveServerConfig = async (nextServerConfig) => {
+    const latestConfig = await window.electronAPI.loadConfig();
+    const newConfig = {
+      ...latestConfig,
+      serverConfig: {
+        ...DEFAULT_SERVER_CONFIG,
+        ...nextServerConfig
+      }
+    };
+    await window.electronAPI.saveConfig(newConfig);
+    if (setConfig) setConfig(newConfig);
+  };
+
+  const validateServerConfig = () => {
+    const result = serverConfigSchema.safeParse(serverConfig);
+    if (!result.success) {
+      addToast(getFirstZodError(result), 'error');
+      return null;
+    }
+    return result.data;
+  };
+
+  const updateCommandQueryFromTextarea = (textarea) => {
+    setCommandQuery(getCurrentCommandQuery(textarea.value, textarea.selectionStart));
+  };
+
+  const insertCommandSuggestion = (command) => {
+    const textarea = commandsRef.current;
+    const currentValue = serverConfig.customCommands || '';
+    const caretPosition = textarea?.selectionStart ?? currentValue.length;
+    const lineStart = currentValue.lastIndexOf('\n', Math.max(0, caretPosition - 1)) + 1;
+    const nextLineIndex = currentValue.indexOf('\n', caretPosition);
+    const lineEnd = nextLineIndex === -1 ? currentValue.length : nextLineIndex;
+    const before = currentValue.slice(0, lineStart);
+    const after = currentValue.slice(lineEnd);
+    const needsNewline = after && !after.startsWith('\n');
+    const nextValue = `${before}${command}${needsNewline ? '\n' : ''}${after}`;
+
+    updateServerConfig({ customCommands: nextValue });
+    setCommandQuery('');
+
+    setTimeout(() => {
+      if (!commandsRef.current) return;
+      const nextCaret = lineStart + command.length;
+      commandsRef.current.focus();
+      commandsRef.current.setSelectionRange(nextCaret, nextCaret);
+    }, 0);
+  };
 
   const handleInstallDS = async () => {
     setInstalling(true);
     try {
       await window.electronAPI.installDedicatedServer();
       setDsInstalled(true);
-      addToast('Dedicated Server installed', 'success');
+      addToast('Dedicated server installed', 'success');
     } catch (err) {
       addToast(err.message, 'error');
     }
@@ -52,9 +191,14 @@ export default function LANPage({ config, addToast }) {
   };
 
   const handleStartServer = async () => {
+    const parsedConfig = validateServerConfig();
+    if (!parsedConfig) return;
+
     setLoading(true);
     try {
-      await window.electronAPI.startServer(serverConfig);
+      setServerConfig(parsedConfig);
+      await saveServerConfig(parsedConfig);
+      await window.electronAPI.startServer(parsedConfig);
       setServerRunning(true);
       addToast('Server started', 'success');
     } catch (err) {
@@ -81,248 +225,222 @@ export default function LANPage({ config, addToast }) {
   const copyIP = () => {
     const text = `${localIP}:${serverConfig.port}`;
     navigator.clipboard.writeText(text);
-    addToast('IP:Port copied! In CSGO console, type connect then paste', 'success');
+    addToast('IP:Port copied', 'success');
   };
 
+  const connectCommand = `${localIP || '127.0.0.1'}:${serverConfig.port}`;
+
   return (
-    <div>
-      <h2 className="text-2xl font-bold mb-6">LAN Server</h2>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-semibold tracking-normal">LAN Server</h2>
+            <Badge variant={serverRunning ? 'success' : dsInstalled ? 'warning' : 'outline'}>
+              {serverRunning ? 'Online' : dsInstalled ? 'Ready' : 'Setup'}
+            </Badge>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {serverConfig.hostname} on {serverConfig.map}
+          </p>
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={handleLaunchCSGO}>
+            <Play className="h-4 w-4" />
+            Launch CSGO
+          </Button>
+          {!serverRunning ? (
+            <Button onClick={handleStartServer} disabled={loading || !dsInstalled} variant="success">
+              <Power className="h-4 w-4" />
+              {loading ? 'Starting' : !dsInstalled ? 'Install DS First' : 'Start Server'}
+            </Button>
+          ) : (
+            <Button onClick={handleStopServer} variant="destructive">
+              <Power className="h-4 w-4" />
+              Stop Server
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
         <div className="space-y-6">
-          <div className="bg-dark-900 rounded-xl border border-dark-800 p-6">
-            <h3 className="font-semibold mb-4">Server Configuration</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-dark-400 mb-1">Map</label>
-                <select
-                  value={serverConfig.map}
-                  onChange={(e) => setServerConfig({ ...serverConfig, map: e.target.value })}
-                  className="w-full bg-dark-800 border border-dark-700 rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500"
-                >
-                  {maps.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-dark-400 mb-1">Game Mode</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {gameModes.map((mode) => (
-                    <button
-                      key={mode.id}
-                      onClick={() => setServerConfig({ ...serverConfig, gameMode: mode.id })}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        serverConfig.gameMode === mode.id
-                          ? 'bg-primary-600 text-white'
-                          : 'bg-dark-800 text-dark-400 hover:bg-dark-700'
-                      }`}
-                    >
-                      {mode.label}
-                    </button>
-                  ))}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wrench className="h-4 w-4 text-primary" />
+                Match Configuration
+              </CardTitle>
+              <CardDescription>Competitive profile, network settings, and round rules.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Map</Label>
+                  <select
+                    value={serverConfig.map}
+                    onChange={(e) => updateServerConfig({ map: e.target.value })}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    {maps.map((map) => <option key={map} value={map}>{map}</option>)}
+                  </select>
                 </div>
-              </div>
-              <div className="flex items-center justify-between bg-dark-800 rounded-lg px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium">Bots</p>
-                  <p className="text-xs text-dark-400">{serverConfig.botsEnabled ? 'Enabled (fill empty slots)' : 'Disabled'}</p>
-                </div>
-                <button
-                  onClick={() => setServerConfig({ ...serverConfig, botsEnabled: !serverConfig.botsEnabled })}
-                  className={`relative w-12 h-6 rounded-full transition-colors ${
-                    serverConfig.botsEnabled ? 'bg-green-600' : 'bg-dark-600'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                      serverConfig.botsEnabled ? 'translate-x-6' : 'translate-x-0.5'
-                    }`}
-                  />
-                </button>
-              </div>
-              <div className="flex items-center justify-between bg-dark-800 rounded-lg px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium">Freeze Time</p>
-                  <p className="text-xs text-dark-400">0 = No freeze at round start</p>
-                </div>
-                <button
-                  onClick={() => setServerConfig({ ...serverConfig, freezeTime: !serverConfig.freezeTime })}
-                  className={`relative w-12 h-6 rounded-full transition-colors ${
-                    serverConfig.freezeTime ? 'bg-green-600' : 'bg-dark-600'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                      serverConfig.freezeTime ? 'translate-x-6' : 'translate-x-0.5'
-                    }`}
-                  />
-                </button>
-              </div>
-              <div className="flex items-center justify-between bg-dark-800 rounded-lg px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium">Skip Warmup</p>
-                  <p className="text-xs text-dark-400">Match starts immediately</p>
-                </div>
-                <button
-                  onClick={() => setServerConfig({ ...serverConfig, skipWarmup: !serverConfig.skipWarmup })}
-                  className={`relative w-12 h-6 rounded-full transition-colors ${
-                    serverConfig.skipWarmup ? 'bg-green-600' : 'bg-dark-600'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                      serverConfig.skipWarmup ? 'translate-x-6' : 'translate-x-0.5'
-                    }`}
-                  />
-                </button>
-              </div>
-              <div className="flex items-center justify-between bg-dark-800 rounded-lg px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium">Friendly Fire</p>
-                  <p className="text-xs text-dark-400">Team damage ON/OFF</p>
-                </div>
-                <button
-                  onClick={() => setServerConfig({ ...serverConfig, friendlyFire: !serverConfig.friendlyFire })}
-                  className={`relative w-12 h-6 rounded-full transition-colors ${
-                    serverConfig.friendlyFire ? 'bg-green-600' : 'bg-dark-600'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                      serverConfig.friendlyFire ? 'translate-x-6' : 'translate-x-0.5'
-                    }`}
-                  />
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-dark-400 mb-1">Max Players</label>
-                  <input
-                    type="number"
-                    value={serverConfig.maxPlayers}
-                    onChange={(e) => setServerConfig({ ...serverConfig, maxPlayers: parseInt(e.target.value) })}
-                    className="w-full bg-dark-800 border border-dark-700 rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-dark-400 mb-1">Port</label>
-                  <input
-                    type="number"
-                    value={serverConfig.port}
-                    onChange={(e) => setServerConfig({ ...serverConfig, port: parseInt(e.target.value) })}
-                    className="w-full bg-dark-800 border border-dark-700 rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm text-dark-400 mb-1">Hostname</label>
-                <input
-                  type="text"
-                  value={serverConfig.hostname}
-                  onChange={(e) => setServerConfig({ ...serverConfig, hostname: e.target.value })}
-                  className="w-full bg-dark-800 border border-dark-700 rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-dark-400 mb-1">RCON Password</label>
-                <input
-                  type="password"
-                  value={serverConfig.rconPassword}
-                  onChange={(e) => setServerConfig({ ...serverConfig, rconPassword: e.target.value })}
-                  className="w-full bg-dark-800 border border-dark-700 rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500"
-                />
-              </div>
-            </div>
-          </div>
 
-          <div className="bg-dark-900 rounded-xl border border-dark-800 p-6">
-            <h3 className="font-semibold mb-4">Quick Actions</h3>
-            <div className="space-y-3">
-              {!serverRunning ? (
-                <button
-                  onClick={handleStartServer}
-                  disabled={loading || !dsInstalled}
-                  className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 py-3 rounded-lg font-bold transition-colors"
-                >
-                  {loading ? 'Starting...' : !dsInstalled ? 'Install DS First' : 'Start Server'}
-                </button>
-              ) : (
-                <button
-                  onClick={handleStopServer}
-                  className="w-full bg-red-600 hover:bg-red-700 py-3 rounded-lg font-bold transition-colors"
-                >
-                  Stop Server
-                </button>
-              )}
-              <button
-                onClick={handleLaunchCSGO}
-                className="w-full bg-primary-600 hover:bg-primary-700 py-3 rounded-lg font-bold transition-colors"
-              >
-                Launch CSGO
-              </button>
-            </div>
-            <div className="mt-4 pt-4 border-t border-dark-700">
-              <p className="text-dark-400 text-sm mb-3">Dedicated Server: {dsInstalled ? <span className="text-green-400">Installed</span> : <span className="text-yellow-400">Not Installed</span>}</p>
-              <button
-                onClick={handleInstallDS}
-                disabled={installing || dsInstalled}
-                className="w-full bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 py-2 rounded-lg font-bold transition-colors text-sm"
-              >
-                {installing ? 'Installing...' : dsInstalled ? 'Installed' : 'Install Dedicated Server'}
-              </button>
-            </div>
-          </div>
+                <div className="space-y-2">
+                  <Label>Game Mode</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {gameModes.map((mode) => (
+                      <Button
+                        key={mode.id}
+                        type="button"
+                        variant={serverConfig.gameMode === mode.id ? 'default' : 'outline'}
+                        onClick={() => updateServerConfig({ gameMode: mode.id })}
+                        className="justify-center"
+                      >
+                        {mode.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <ToggleRow title="Bots" caption={serverConfig.botsEnabled ? 'Fill empty slots' : 'Player-only lobby'} checked={serverConfig.botsEnabled} onChange={(value) => updateServerConfig({ botsEnabled: value })} />
+                <ToggleRow title="Skip Warmup" caption="Force match start after map load" checked={serverConfig.skipWarmup} onChange={(value) => updateServerConfig({ skipWarmup: value })} />
+                <ToggleRow title="Freeze Time" caption={serverConfig.freezeTime ? '30 seconds' : 'Instant rounds'} checked={serverConfig.freezeTime} onChange={(value) => updateServerConfig({ freezeTime: value })} />
+                <ToggleRow title="Friendly Fire" caption={serverConfig.friendlyFire ? 'Team damage enabled' : 'Team damage disabled'} checked={serverConfig.friendlyFire} onChange={(value) => updateServerConfig({ friendlyFire: value })} />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Max Players</Label>
+                  <Input
+                    type="number"
+                    value={Number.isFinite(serverConfig.maxPlayers) ? serverConfig.maxPlayers : ''}
+                    onChange={(e) => updateServerConfig({ maxPlayers: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Port</Label>
+                  <Input
+                    type="number"
+                    value={Number.isFinite(serverConfig.port) ? serverConfig.port : ''}
+                    onChange={(e) => updateServerConfig({ port: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Hostname</Label>
+                  <Input
+                    value={serverConfig.hostname}
+                    onChange={(e) => updateServerConfig({ hostname: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>RCON Password</Label>
+                  <Input
+                    type="password"
+                    value={serverConfig.rconPassword}
+                    onChange={(e) => updateServerConfig({ rconPassword: e.target.value })}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TerminalSquare className="h-4 w-4 text-primary" />
+                Command Console
+              </CardTitle>
+              <CardDescription>Preset commands for match, bot, and practice control.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea
+                ref={commandsRef}
+                value={serverConfig.customCommands}
+                onChange={(e) => {
+                  updateServerConfig({ customCommands: e.target.value });
+                  updateCommandQueryFromTextarea(e.target);
+                }}
+                onClick={(e) => updateCommandQueryFromTextarea(e.target)}
+                onKeyUp={(e) => updateCommandQueryFromTextarea(e.target)}
+                onFocus={(e) => updateCommandQueryFromTextarea(e.target)}
+                rows={6}
+                spellCheck={false}
+                placeholder={'sv_cheats 0\nmp_roundtime 3\nmp_restartgame 1'}
+                className="font-mono"
+              />
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {commandSuggestions.map((item) => (
+                  <button
+                    key={item.command}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => insertCommandSuggestion(item.command)}
+                    className="rounded-md border border-border bg-muted/40 px-3 py-2 text-left transition-colors hover:bg-muted"
+                  >
+                    <span className="block break-all font-mono text-sm text-primary">{item.command}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{item.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <div className="space-y-6">
-          <div className="bg-dark-900 rounded-xl border border-dark-800 p-6">
-            <h3 className="font-semibold mb-4">Connection Info</h3>
-            <div className="bg-dark-800 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-dark-400 text-sm">Your Local IP</p>
-                  <p className="text-xl font-mono font-bold mt-1">{localIP || 'Detecting...'}</p>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wifi className="h-4 w-4 text-primary" />
+                Connection
+              </CardTitle>
+              <CardDescription>LAN endpoint for the active session.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border border-border bg-background p-4">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">IP:Port</p>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <code className="truncate font-mono text-lg text-emerald-300">{connectCommand}</code>
+                  <Button variant="outline" size="icon" onClick={copyIP}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
                 </div>
-                <button
-                  onClick={copyIP}
-                  className="bg-primary-600/20 hover:bg-primary-600/40 text-primary-400 px-4 py-2 rounded-lg transition-colors"
-                >
-                  Copy IP:Port
-                </button>
               </div>
-              <div className="mt-4 pt-4 border-t border-dark-700">
-                <p className="text-dark-400 text-sm">Friends connect to:</p>
-                <code className="block mt-2 bg-dark-950 p-3 rounded-lg font-mono text-green-400">
-                  {localIP}:{serverConfig.port}
-                </code>
-                <p className="text-dark-500 text-xs mt-2">Type <span className="text-primary-400">connect</span> then paste in CSGO console</p>
+              <Button
+                onClick={handleInstallDS}
+                disabled={installing || dsInstalled}
+                variant={dsInstalled ? 'secondary' : 'warning'}
+                className="w-full"
+              >
+                <Server className="h-4 w-4" />
+                {installing ? 'Installing' : dsInstalled ? 'Dedicated Server Installed' : 'Install Dedicated Server'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Server Console</CardTitle>
+              <CardDescription>Live output from the server process.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-80 overflow-y-auto rounded-md border border-border bg-slate-950 p-4 font-mono text-sm">
+                {serverOutput.length === 0 ? (
+                  <p className="text-muted-foreground">Waiting for server output...</p>
+                ) : (
+                  serverOutput.map((line, i) => (
+                    <p key={`${i}-${line.slice(0, 12)}`} className="whitespace-pre-wrap text-slate-300">{line}</p>
+                  ))
+                )}
               </div>
-            </div>
-          </div>
-
-          <div className="bg-dark-900 rounded-xl border border-dark-800 p-6">
-            <h3 className="font-semibold mb-4">Server Console</h3>
-            <div className="bg-dark-950 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm">
-              {serverOutput.length === 0 ? (
-                <p className="text-dark-600">Server output will appear here...</p>
-              ) : (
-                serverOutput.map((line, i) => (
-                  <p key={i} className="text-dark-400 whitespace-pre-wrap">{line}</p>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="bg-dark-900 rounded-xl border border-dark-800 p-6">
-            <h3 className="font-semibold mb-4">Setup Guide</h3>
-            <ol className="space-y-3 text-dark-400 text-sm">
-              <li className="flex gap-3"><span className="text-primary-500 font-bold">1.</span> Install Dedicated Server (if not installed)</li>
-              <li className="flex gap-3"><span className="text-primary-500 font-bold">2.</span> Configure server settings above</li>
-              <li className="flex gap-3"><span className="text-primary-500 font-bold">3.</span> Click "Start Server" (Steam must be running)</li>
-              <li className="flex gap-3"><span className="text-primary-500 font-bold">4.</span> Click "Copy IP:Port" and share with friends</li>
-              <li className="flex gap-3"><span className="text-primary-500 font-bold">5.</span> Friends type <code className="bg-dark-800 px-2 py-0.5 rounded">connect</code> in console, paste IP:Port</li>
-              <li className="flex gap-3"><span className="text-primary-500 font-bold">6.</span> Launch CSGO with "Launch CSGO" button</li>
-            </ol>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
