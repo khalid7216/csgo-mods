@@ -7,6 +7,7 @@ const { createVMT, createVPK, installSkin } = require('../utils/skinManager');
 const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO, installDedicatedServer, findDedicatedServer } = require('../utils/lanServer');
 const { fetchPlayerStats, fetchPlayerProfile, parseStats, getCachedStats } = require('../utils/statsParser');
 const { DEFAULT_CONFIG, DEFAULT_MODS, DEFAULT_STATS, ensureCacheFile, getCachePath } = require('../utils/appPaths');
+const { createApiServer } = require('../platform/apiServer');
 const {
   validatePath,
   validateUrl,
@@ -21,6 +22,7 @@ const {
 } = require('../utils/security');
 
 let mainWindow;
+let platformApi;
 
 function ensureCacheDir() {
   ensureCacheFile('config.json', DEFAULT_CONFIG);
@@ -77,7 +79,7 @@ function createWindow() {
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
           "img-src 'self' data: https: blob:; " +
           "media-src 'self' https://res.cloudinary.com; " +
-          "connect-src 'self' https://api.gamebanana.com https://gamebanana.com https://api.steampowered.com https://res.cloudinary.com; " +
+          "connect-src 'self' http://localhost:4180 http://127.0.0.1:4180 https://api.gamebanana.com https://gamebanana.com https://api.steampowered.com https://res.cloudinary.com; " +
           "font-src 'self' https://fonts.gstatic.com;"
         ]
       }
@@ -111,8 +113,20 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+async function startPlatformApi() {
+  platformApi = createApiServer();
+  try {
+    await platformApi.start();
+  } catch (error) {
+    if (error && error.code !== 'EADDRINUSE') {
+      console.warn('Faceit MVP API failed to start:', error.message);
+    }
+  }
+}
+
+app.whenReady().then(async () => {
   ensureCacheDir();
+  await startPlatformApi();
   createWindow();
 
   app.on('activate', () => {
@@ -122,6 +136,9 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   stopServer();
+  if (platformApi) {
+    platformApi.close().catch(() => {});
+  }
   if (process.platform !== 'darwin') app.quit();
 });
 

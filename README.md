@@ -4,6 +4,23 @@ Electron-based desktop application for managing Counter-Strike: Global Offensive
 
 ## Features Implemented
 
+### Faceit-style Platform MVP
+- **Player Client Auth** - Electron app now requires player login/register before app access
+  - Seed player account on first run: `player@faceit.local` / `Player@12345`
+  - Each player gets an individual profile and local stats record
+  - Players can connect Steam using SteamID64 or a Steam Community profile URL
+  - Players can sign up/login with Steam OpenID from the client login screen
+- **Admin Web Panel** - Separate web dashboard for admin-only operations
+  - Seed admin account on first run: `admin@faceit.local` / `Admin@12345`
+  - View registered users, player roles/status, and per-user stats
+  - Ban/activate users and promote/demote admins
+  - Configure map, game mode, bots, warmup, freeze time, friendly fire, and custom commands before server start
+- **Server Control API** - Local backend API controls auth, users, stats, and server actions
+  - Electron starts the API automatically on `http://127.0.0.1:4180`
+  - Admin web can start/stop the configured local CSGO server
+  - Server start requires a valid CSGO path saved in the desktop client Settings
+  - Platform runtime data is stored in `mods-cache/platform-data.json`
+
 ### GameBanana API Integration
 - **Maps Browser** - Fetch and browse CS:GO maps from GameBanana
   - Search functionality with real-time filtering
@@ -127,6 +144,20 @@ npm install
 ```bash
 npm run dev
 ```
+
+### Platform Development
+```bash
+npm run dev
+npm run dev:admin
+```
+
+For admin-only web work without the Electron client, run:
+```bash
+npm run dev:api
+npm run dev:admin
+```
+
+Steam signup works through Steam OpenID. For richer Steam names/avatars, save a Steam Web API key in desktop Settings or set `STEAM_API_KEY` before starting the API.
 
 ### Build
 ```bash

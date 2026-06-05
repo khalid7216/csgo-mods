@@ -1,10 +1,16 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BarChart3, Box, Map, Palette, Settings, Wifi } from 'lucide-react';
+import { BarChart3, Box, LogOut, Map, Palette, Play, Settings, UserCircle, Wifi } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { cn } from '../lib/utils';
 
-const navItems = [
+const playerNavItems = [
+  { path: '/profile', label: 'Profile', Icon: UserCircle },
+  { path: '/stats', label: 'Stats', Icon: BarChart3 }
+];
+
+const adminNavItems = [
+  { path: '/profile', label: 'Profile', Icon: UserCircle },
   { path: '/maps', label: 'Maps', Icon: Map },
   { path: '/skins', label: 'Skins', Icon: Palette },
   { path: '/installed', label: 'Installed', Icon: Box },
@@ -13,20 +19,26 @@ const navItems = [
   { path: '/settings', label: 'Settings', Icon: Settings }
 ];
 
-export default function Sidebar({ csgoPath }) {
+export default function Sidebar({ csgoPath, liveServers = [], onLogout, user }) {
   const location = useLocation();
   const folderName = csgoPath ? (csgoPath.split('\\').pop() || csgoPath.split('/').pop()) : '';
+  const isAdmin = user?.role === 'admin';
+  const hasLiveServer = liveServers.length > 0;
+  const navItems = [
+    ...(isAdmin ? adminNavItems : playerNavItems),
+    ...(hasLiveServer ? [{ path: '/join', label: 'Join Now', Icon: Play, live: true }] : [])
+  ];
 
   return (
     <aside className="flex w-64 min-w-64 flex-col border-r border-border bg-card/80 backdrop-blur-xl">
       <div className="border-b border-border p-5">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-black">
-            CS
+            5V
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold tracking-normal">CSGO Mod Manager</h1>
-            <p className="truncate text-xs text-muted-foreground">LAN, mods, stats</p>
+            <h1 className="truncate text-lg font-semibold tracking-normal">CSGO Arena</h1>
+            <p className="truncate text-xs text-muted-foreground">{isAdmin ? 'Admin client' : 'Player client'}</p>
           </div>
         </div>
         <div className="mt-4">
@@ -37,7 +49,7 @@ export default function Sidebar({ csgoPath }) {
       </div>
 
       <nav className="flex-1 space-y-1 p-3">
-        {navItems.map(({ path, label, Icon }) => {
+        {navItems.map(({ path, label, Icon, live }) => {
           const active = location.pathname === path;
           return (
             <Link
@@ -45,7 +57,9 @@ export default function Sidebar({ csgoPath }) {
               to={path}
               className={cn(
                 'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
-                active
+                live
+                  ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/20'
+                  : active
                   ? 'bg-primary/15 text-primary ring-1 ring-primary/30'
                   : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
               )}
@@ -57,10 +71,19 @@ export default function Sidebar({ csgoPath }) {
         })}
       </nav>
 
-      <div className="border-t border-border p-4">
-        <div className="rounded-md bg-muted px-3 py-2 text-center text-xs text-muted-foreground">
-          Desktop build v1.0.0
+      <div className="space-y-3 border-t border-border p-4">
+        <div className="rounded-md bg-muted px-3 py-2">
+          <p className="truncate text-sm font-medium">{user?.profile?.displayName || user?.username}</p>
+          <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
         </div>
+        <button
+          type="button"
+          onClick={onLogout}
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>Logout</span>
+        </button>
       </div>
     </aside>
   );
