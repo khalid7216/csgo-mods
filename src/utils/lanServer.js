@@ -455,7 +455,7 @@ r_shadowlod 0
 }
 
 // ── LAN broadcast / discovery ───────────────────────────────────────────────
-const BROADCAST_PORT = 27015;
+const BROADCAST_PORT = 27016;
 let broadcastInterval = null;
 let broadcastSocket = null;
 let listenSocket = null;
@@ -477,7 +477,6 @@ function startBroadcast(serverInfo) {
       gameMode: serverInfo.gameMode,
       players: serverInfo.players || 0
     });
-    console.log('[lanServer] broadcasting on port', BROADCAST_PORT);
     broadcastInterval = setInterval(() => {
       try {
         broadcastSocket.send(message, 0, message.length, BROADCAST_PORT, '255.255.255.255');
@@ -500,7 +499,8 @@ function stopBroadcast() {
 }
 
 function startListening(onServerFound) {
-  stopListening();
+  if (listenSocket) return;
+  openFirewallPort(BROADCAST_PORT);
   listenSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
   listenSocket.on('error', (err) => {
     console.error('[lanServer] listen error:', err.message);
@@ -514,9 +514,7 @@ function startListening(onServerFound) {
       }
     } catch {}
   });
-  listenSocket.bind(BROADCAST_PORT, () => {
-    console.log('[lanServer] listening on port', BROADCAST_PORT);
-  });
+  listenSocket.bind(BROADCAST_PORT);
 }
 
 function stopListening() {
