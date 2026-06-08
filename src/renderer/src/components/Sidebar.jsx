@@ -7,6 +7,7 @@ import { cn } from '../lib/utils';
 const playerNavItems = [
   { path: '/profile', label: 'Profile', Icon: UserCircle },
   { path: '/matchmaking', label: 'Find Match', Icon: Swords },
+  { path: '/lan', label: 'LAN Server', Icon: Wifi, badge: null },
   { path: '/stats', label: 'Stats', Icon: BarChart3 },
   { path: '/leaderboard', label: 'Leaderboard', Icon: ListOrdered }
 ];
@@ -23,13 +24,22 @@ const adminNavItems = [
   { path: '/settings', label: 'Settings', Icon: Settings }
 ];
 
-export default function Sidebar({ csgoPath, liveServers = [], onLogout, user }) {
+export default function Sidebar({ csgoPath, liveServers = [], onLogout, user, serverAvailable }) {
   const location = useLocation();
   const folderName = csgoPath ? (csgoPath.split('\\').pop() || csgoPath.split('/').pop()) : '';
   const isAdmin = user?.role === 'admin';
   const hasLiveServer = liveServers.length > 0;
   const navItems = [
-    ...(isAdmin ? adminNavItems : playerNavItems),
+    ...(isAdmin
+      ? adminNavItems.map((item) => ({
+          ...item,
+          badge: item.path === '/lan' && serverAvailable ? 'SERVER FOUND' : undefined
+        }))
+      : playerNavItems.map((item) => ({
+          ...item,
+          badge: item.path === '/lan' && serverAvailable ? 'SERVER FOUND' : undefined
+        }))
+    ),
     ...(hasLiveServer ? [{ path: '/join', label: 'Connect Game', Icon: Play, live: true }] : [])
   ];
 
@@ -53,7 +63,7 @@ export default function Sidebar({ csgoPath, liveServers = [], onLogout, user }) 
       </div>
 
       <nav className="flex-1 space-y-1 p-3">
-        {navItems.map(({ path, label, Icon, live }) => {
+        {navItems.map(({ path, label, Icon, live, badge }) => {
           const active = location.pathname === path;
           return (
             <Link
@@ -68,8 +78,13 @@ export default function Sidebar({ csgoPath, liveServers = [], onLogout, user }) 
                   : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
               )}
             >
-              <Icon className="h-4 w-4" />
-              <span>{label}</span>
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="flex-1 truncate">{label}</span>
+              {badge && (
+                <Badge variant="success" className="ml-auto text-[10px] px-1.5 py-0">
+                  {badge}
+                </Badge>
+              )}
             </Link>
           );
         })}

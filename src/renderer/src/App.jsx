@@ -23,6 +23,7 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
   const [liveServers, setLiveServers] = useState([]);
+  const [discoveredServer, setDiscoveredServer] = useState(null);
   const config = useAppStore((state) => state.config);
   const setConfig = useAppStore((state) => state.setConfig);
   const toasts = useAppStore((state) => state.toasts);
@@ -139,6 +140,7 @@ export default function App() {
           liveServers={liveServers}
           user={sessionUser}
           onLogout={logout}
+          serverAvailable={!!discoveredServer}
         />
         <main className="flex-1 overflow-y-auto p-6">
         <Routes>
@@ -163,7 +165,7 @@ export default function App() {
           <Route path="/maps" element={adminOnly(<MapsPage addToast={addToast} />)} />
           <Route path="/skins" element={adminOnly(<SkinsPage addToast={addToast} />)} />
           <Route path="/installed" element={adminOnly(<InstalledModsPage addToast={addToast} />)} />
-          <Route path="/lan" element={adminOnly(<LANPage config={config} setConfig={setConfig} addToast={addToast} />)} />
+          <Route path="/lan" element={<LANPage config={config} setConfig={setConfig} addToast={addToast} user={sessionUser} discoveredServer={discoveredServer} setDiscoveredServer={setDiscoveredServer} />} />
           <Route
             path="/stats"
             element={isAdmin

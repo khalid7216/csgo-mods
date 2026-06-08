@@ -2,6 +2,7 @@ const { exec, spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
+const dgram = require('dgram');
 
 const STEAM_DIR = 'C:\\Program Files (x86)\\Steam';
 const STEAMCMD_DIR = path.join(STEAM_DIR, 'steamcmd');
@@ -453,4 +454,66 @@ r_shadowlod 0
   return { success: true };
 }
 
-module.exports = { getLocalIP, openFirewallPort, installDedicatedServer, findDedicatedServer, startServer, stopServer, getServerStatus, launchCSGO };
+// ── LAN broadcast / discovery ───────────────────────────────────────────────
+const BROADCAST_PORT = 27016;
+let broadcastInterval = null;
+let broadcastSocket = null;
+let listenSocket = null;
+
+function startBroadcast(serverInfo) {
+  if (broadcastSocket) stopBroadcast();
+  broadcastSocket = dgram.createSocket('udp4');
+  broadcastSocket.bind(() => {
+    broadcastSocket.setBroadcast(true);
+    const message = JSON.stringify({
+      type: 'CSGO_MOD_MANAGER_SERVER',
+      ip: serverInfo.ip,
+      port: serverInfo.port,
+      hostname: serverInfo.hostname,
+      map: serverInfo.map,
+      gameMode: serverInfo.gameMode,
+      players: serverInfo.players || 0
+    });
+    broadcastInterval = setInterval(() => {
+      try {
+        broadcastSocket.send(message, 0, message.length, BROADCAST_PORT, '255.255.255.255');
+      } catch {}
+    }, 3000);
+  });
+}
+
+function stopBroadcast() {
+  if (broadcastInterval) {
+    clearInterval(broadcastInterval);
+    broadcastInterval = null;
+  }
+  if (broadcastSocket) {
+    try { broadcastSocket.close(); } catch {}
+    broadcastSocket = null;
+  }
+}
+
+function startListening(onServerFound) {
+  stopListening();
+  listenSocket = dgram.createSocket('udp4');
+  listenSocket.on('error', () => {});
+  listenSocket.on('message', (msg) => {
+    try {
+      const data = JSON.parse(msg.toString());
+      if (data.type === 'CSGO_MOD_MANAGER_SERVER') onServerFound(data);
+    } catch {}
+  });
+  listenSocket.bind(BROADCAST_PORT, () => {
+    listenSocket.setBroadcast(true);
+  });
+  return listenSocket;
+}
+
+function stopListening() {
+  if (listenSocket) {
+    try { listenSocket.close(); } catch {}
+    listenSocket = null;
+  }
+}
+
+module.exports = { getLocalIP, openFirewallPort, installDedicatedServer, findDedicatedServer, startServer, stopServer, getServerStatus, launchCSGO, startBroadcast, stopBroadcast, startListening, stopListening };

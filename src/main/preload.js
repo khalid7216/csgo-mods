@@ -30,6 +30,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   installDedicatedServer: () => ipcRenderer.invoke('install-dedicated-server'),
   findDedicatedServer: () => ipcRenderer.invoke('find-dedicated-server'),
+  startBroadcast: (serverInfo) => ipcRenderer.invoke('start-broadcast', serverInfo),
+  stopBroadcast: () => ipcRenderer.invoke('stop-broadcast'),
+  startListening: () => ipcRenderer.invoke('start-listening'),
+  stopListening: () => ipcRenderer.invoke('stop-listening'),
+  onServerFound: (callback) => {
+    ipcRenderer.on('server-found', (_, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('server-found');
+  },
   onDownloadProgress: (callback) => ipcRenderer.on('download-progress', (_, data) => callback(data)),
   onServerOutput: (callback) => ipcRenderer.on('server-output', (_, data) => callback(data)),
   onToast: (callback) => ipcRenderer.on('toast', (_, data) => callback(data))

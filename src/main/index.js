@@ -4,7 +4,7 @@ const fs = require('fs');
 const { detectCSGOPath, validateCSGOPath, saveCSGOPath, loadCSGOPath } = require('../utils/csgoPath');
 const { getGameBananaMaps, getGameBananaSkins, downloadMap, downloadSkin, installMap, getInstalledMods, removeMod } = require('../utils/modManager');
 const { createVMT, createVPK, installSkin } = require('../utils/skinManager');
-const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO, installDedicatedServer, findDedicatedServer } = require('../utils/lanServer');
+const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO, installDedicatedServer, findDedicatedServer, startBroadcast, stopBroadcast, startListening, stopListening } = require('../utils/lanServer');
 const { fetchPlayerStats, fetchPlayerProfile, parseStats, getCachedStats } = require('../utils/statsParser');
 const { DEFAULT_CONFIG, DEFAULT_MODS, DEFAULT_STATS, ensureCacheFile, getCachePath } = require('../utils/appPaths');
 const { createApiServer } = require('../platform/apiServer');
@@ -79,7 +79,7 @@ function createWindow() {
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
           "img-src 'self' data: https: blob:; " +
           "media-src 'self' https://res.cloudinary.com; " +
-          "connect-src 'self' http://localhost:4180 http://127.0.0.1:4180 https://api.gamebanana.com https://gamebanana.com https://api.steampowered.com https://res.cloudinary.com; " +
+          "connect-src 'self' http://localhost:4180 http://127.0.0.1:4180 http://*:4180 https://api.gamebanana.com https://gamebanana.com https://api.steampowered.com https://res.cloudinary.com; " +
           "font-src 'self' https://fonts.gstatic.com;"
         ]
       }
@@ -382,6 +382,27 @@ ipcMain.handle('open-external', (_, url) => {
     throw new Error(validation.error);
   }
   return shell.openExternal(validation.url);
+});
+
+ipcMain.handle('start-broadcast', (_, serverInfo) => {
+  startBroadcast(serverInfo);
+  return true;
+});
+
+ipcMain.handle('stop-broadcast', () => {
+  stopBroadcast();
+  return true;
+});
+
+ipcMain.handle('start-listening', () => {
+  return startListening((serverData) => {
+    mainWindow.webContents.send('server-found', serverData);
+  });
+});
+
+ipcMain.handle('stop-listening', () => {
+  stopListening();
+  return true;
 });
 
 ipcMain.handle('show-toast', (_, message, type = 'info') => {

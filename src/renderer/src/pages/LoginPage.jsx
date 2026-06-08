@@ -13,6 +13,7 @@ export default function LoginPage({ addToast, onAuthenticated }) {
     email: '',
     password: ''
   });
+  const [platformServer, setPlatformServer] = useState(platformApi.getApiBase());
   const [steamInput, setSteamInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [steamLoading, setSteamLoading] = useState(false);
@@ -26,6 +27,7 @@ export default function LoginPage({ addToast, onAuthenticated }) {
     event.preventDefault();
     setLoading(true);
     setError('');
+    platformApi.setApiBase(platformServer);
 
     try {
       const user = mode === 'login'
@@ -43,6 +45,7 @@ export default function LoginPage({ addToast, onAuthenticated }) {
   const signInWithSteam = async () => {
     setSteamLoading(true);
     setError('');
+    platformApi.setApiBase(platformServer);
 
     try {
       const session = await platformApi.startSteamAuth();
@@ -74,6 +77,7 @@ export default function LoginPage({ addToast, onAuthenticated }) {
   const signInWithSteamId = async () => {
     setSteamLoading(true);
     setError('');
+    platformApi.setApiBase(platformServer);
 
     try {
       const user = await platformApi.directSteamLogin(steamInput);
@@ -98,6 +102,16 @@ export default function LoginPage({ addToast, onAuthenticated }) {
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={submit}>
+            <div className="space-y-2">
+              <Label htmlFor="platformServer">Platform Server IP</Label>
+              <Input
+                id="platformServer"
+                value={platformServer}
+                onChange={(event) => setPlatformServer(event.target.value)}
+                placeholder="Admin PC IP, e.g. 192.168.1.20"
+              />
+            </div>
+
             {mode === 'register' && (
               <div className="space-y-2">
                 <Label htmlFor="username">Username</Label>

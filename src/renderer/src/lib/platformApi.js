@@ -1,5 +1,26 @@
-const API_BASE = import.meta.env.VITE_FACEIT_API_URL || 'http://127.0.0.1:4180/api';
+const DEFAULT_API_BASE = import.meta.env.VITE_FACEIT_API_URL || 'http://127.0.0.1:4180/api';
 const TOKEN_KEY = 'faceit-mvp:token';
+const API_BASE_KEY = 'faceit-mvp:api-base';
+
+function normalizeApiBase(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return DEFAULT_API_BASE;
+
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+  const withoutSlash = withProtocol.replace(/\/+$/, '');
+  if (withoutSlash.endsWith('/api')) return withoutSlash;
+  return `${withoutSlash}:4180/api`.replace(/:(\d+):4180\/api$/, ':$1/api');
+}
+
+function getApiBase() {
+  return normalizeApiBase(window.localStorage.getItem(API_BASE_KEY) || DEFAULT_API_BASE);
+}
+
+function setApiBase(value) {
+  const nextBase = normalizeApiBase(value);
+  window.localStorage.setItem(API_BASE_KEY, nextBase);
+  return nextBase;
+}
 
 function getToken() {
   return window.localStorage.getItem(TOKEN_KEY) || '';
@@ -27,7 +48,7 @@ async function request(path, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${getApiBase()}${path}`, {
     ...options,
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined
@@ -156,6 +177,7 @@ export const platformApi = {
   acceptMatch,
   connectSteam,
   directSteamLogin,
+  getApiBase,
   getToken,
   joinQueue,
   leaderboard,
@@ -168,6 +190,7 @@ export const platformApi = {
   pollSteamAuth,
   queueStatus,
   register,
+  setApiBase,
   startSteamAuth,
   stats,
   updateProfile
