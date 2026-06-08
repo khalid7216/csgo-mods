@@ -13,6 +13,7 @@ export default function LoginPage({ addToast, onAuthenticated }) {
     email: '',
     password: ''
   });
+  const [steamInput, setSteamInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [steamLoading, setSteamLoading] = useState(false);
   const [error, setError] = useState('');
@@ -65,6 +66,21 @@ export default function LoginPage({ addToast, onAuthenticated }) {
       throw new Error('Steam login timed out');
     } catch (err) {
       setError(err.message || 'Steam login failed');
+    } finally {
+      setSteamLoading(false);
+    }
+  };
+
+  const signInWithSteamId = async () => {
+    setSteamLoading(true);
+    setError('');
+
+    try {
+      const user = await platformApi.directSteamLogin(steamInput);
+      addToast('Signed in with Steam ID', 'success');
+      onAuthenticated(user);
+    } catch (err) {
+      setError(err.message || 'Steam ID login failed');
     } finally {
       setSteamLoading(false);
     }
@@ -154,6 +170,26 @@ export default function LoginPage({ addToast, onAuthenticated }) {
             >
               <ExternalLink className="h-4 w-4" />
               {steamLoading ? 'Waiting for Steam...' : 'Sign up with Steam'}
+            </Button>
+
+            <div className="space-y-2">
+              <Label htmlFor="steamInput">SteamID64 or Profile URL</Label>
+              <Input
+                id="steamInput"
+                value={steamInput}
+                onChange={(event) => setSteamInput(event.target.value)}
+                placeholder="7656119... or https://steamcommunity.com/profiles/..."
+              />
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={steamLoading || !steamInput.trim()}
+              onClick={signInWithSteamId}
+            >
+              Login with Steam ID
             </Button>
           </form>
         </CardContent>

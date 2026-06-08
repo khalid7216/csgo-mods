@@ -1,16 +1,20 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BarChart3, Box, LogOut, Map, Palette, Play, Settings, UserCircle, Wifi } from 'lucide-react';
+import { BarChart3, Box, ListOrdered, LogOut, Map, Palette, Play, Settings, Swords, UserCircle, Wifi } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { cn } from '../lib/utils';
 
 const playerNavItems = [
   { path: '/profile', label: 'Profile', Icon: UserCircle },
-  { path: '/stats', label: 'Stats', Icon: BarChart3 }
+  { path: '/matchmaking', label: 'Find Match', Icon: Swords },
+  { path: '/stats', label: 'Stats', Icon: BarChart3 },
+  { path: '/leaderboard', label: 'Leaderboard', Icon: ListOrdered }
 ];
 
 const adminNavItems = [
   { path: '/profile', label: 'Profile', Icon: UserCircle },
+  { path: '/matchmaking', label: 'Find Match', Icon: Swords },
+  { path: '/leaderboard', label: 'Leaderboard', Icon: ListOrdered },
   { path: '/maps', label: 'Maps', Icon: Map },
   { path: '/skins', label: 'Skins', Icon: Palette },
   { path: '/installed', label: 'Installed', Icon: Box },
@@ -26,7 +30,7 @@ export default function Sidebar({ csgoPath, liveServers = [], onLogout, user }) 
   const hasLiveServer = liveServers.length > 0;
   const navItems = [
     ...(isAdmin ? adminNavItems : playerNavItems),
-    ...(hasLiveServer ? [{ path: '/join', label: 'Join Now', Icon: Play, live: true }] : [])
+    ...(hasLiveServer ? [{ path: '/join', label: 'Connect Game', Icon: Play, live: true }] : [])
   ];
 
   return (

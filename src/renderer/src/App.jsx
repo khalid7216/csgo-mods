@@ -8,6 +8,8 @@ import MapsPage from './pages/MapsPage';
 import SkinsPage from './pages/SkinsPage';
 import InstalledModsPage from './pages/InstalledModsPage';
 import LANPage from './pages/LANPage';
+import LeaderboardPage from './pages/LeaderboardPage';
+import MatchmakingPage from './pages/MatchmakingPage';
 import PlayerHomePage from './pages/PlayerHomePage';
 import PlatformStatsPage from './pages/PlatformStatsPage';
 import StatsPage from './pages/StatsPage';
@@ -150,11 +152,14 @@ export default function App() {
             element={(
               <PlayerHomePage
                 addToast={addToast}
+                liveServers={liveServers}
                 onUserChange={setSessionUser}
                 user={sessionUser}
               />
             )}
           />
+          <Route path="/matchmaking" element={<MatchmakingPage addToast={addToast} />} />
+          <Route path="/leaderboard" element={<LeaderboardPage addToast={addToast} />} />
           <Route path="/maps" element={adminOnly(<MapsPage addToast={addToast} />)} />
           <Route path="/skins" element={adminOnly(<SkinsPage addToast={addToast} />)} />
           <Route path="/installed" element={adminOnly(<InstalledModsPage addToast={addToast} />)} />

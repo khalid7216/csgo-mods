@@ -8,12 +8,14 @@ const { createToken, hashPassword, publicUser, verifyPassword, verifyToken } = r
 const { createStats, ensureProfile, readData, updateData } = require('./dataStore');
 
 const DEFAULT_PORT = Number(process.env.FACEIT_API_PORT || 4180);
-const DEFAULT_HOST = process.env.FACEIT_API_HOST || '127.0.0.1';
+const DEFAULT_HOST = process.env.FACEIT_API_HOST || '0.0.0.0';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAP_RE = /^[a-zA-Z0-9_]+$/;
 const STEAM_ID_RE = /^\d{17}$/;
 const STEAM_OPENID_URL = 'https://steamcommunity.com/openid/login';
 const STEAM_AUTH_SESSION_TTL_MS = 5 * 60 * 1000;
+const MATCH_ACCEPT_TTL_MS = 45 * 1000;
+const MATCH_SIZE = 2;
 
 const serverLogs = [];
 const steamAuthSessions = new Map();
@@ -29,7 +31,7 @@ function pushLog(message) {
 
 function setCors(req, res) {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
   res.setHeader('Vary', 'Origin');
 }
@@ -142,6 +144,15 @@ function normalizeSteamConnection(body) {
 }
 
 function requestOrigin(req) {
+  const configuredOrigin = String(process.env.FACEIT_PUBLIC_API_ORIGIN || '').trim().replace(/\/+$/, '');
+  if (configuredOrigin) return configuredOrigin;
+
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+
   const host = req.headers.host || `${DEFAULT_HOST}:${DEFAULT_PORT}`;
   return `http://${host}`;
 }
@@ -194,7 +205,7 @@ async function verifySteamOpenId(url) {
   }
 
   const claimedId = url.searchParams.get('openid.claimed_id') || '';
-  const match = claimedId.match(/\/id\/(\d{17})$/);
+  const match = claimedId.match(/\/(?:id|profiles)\/(\d{17})$/);
   if (!match) {
     throw new Error('SteamID64 was not returned by Steam');
   }
@@ -340,6 +351,217 @@ function withProfile(data, user) {
     profile: data.profiles[user.id],
     stats: data.stats[user.id]
   };
+}
+
+async function handleSteamDirectLogin(req, res) {
+  const body = await readJsonBody(req);
+  const steam = normalizeSteamConnection(body);
+  if (steam.error) {
+    sendError(req, res, 400, steam.error);
+    return;
+  }
+  if (!steam.steamId) {
+    sendError(req, res, 400, 'SteamID64 is required for direct Steam login');
+    return;
+  }
+
+  const result = await createOrLoginSteamUser(steam.steamId);
+  const data = updateData((current) => {
+    const user = current.users.find((entry) => entry.id === result.user.id);
+    ensureProfile(current, user);
+    current.profiles[user.id] = {
+      ...current.profiles[user.id],
+      steamPersonaName: steam.steamPersonaName || current.profiles[user.id].steamPersonaName,
+      steamProfileUrl: steam.steamProfileUrl || current.profiles[user.id].steamProfileUrl
+    };
+    return current;
+  });
+  const user = data.users.find((entry) => entry.id === result.user.id);
+  sendJson(req, res, 200, {
+    token: createToken(user, data.settings.tokenSecret),
+    user: withProfile(data, user)
+  });
+}
+
+function kdRatio(stats = {}) {
+  const deaths = Number(stats.deaths || 0);
+  const kills = Number(stats.kills || 0);
+  return deaths > 0 ? Number((kills / deaths).toFixed(2)) : kills;
+}
+
+function levelFromElo(elo) {
+  const value = Number(elo || 1000);
+  return Math.max(1, Math.min(10, Math.floor((value - 800) / 150) + 1));
+}
+
+function mapUser(data, userId) {
+  const user = data.users.find((entry) => entry.id === userId);
+  return user ? withProfile(data, user) : null;
+}
+
+function publicMatch(data, match) {
+  const server = data.servers.find((entry) => entry.id === match.serverId);
+  return {
+    ...match,
+    server: server ? publicServer(server) : null,
+    players: (match.players || []).map((player) => ({
+      ...player,
+      user: mapUser(data, player.userId)
+    }))
+  };
+}
+
+function leaderboard(data) {
+  return data.users
+    .filter((user) => user.role === 'player' && user.status === 'active')
+    .map((user) => {
+      ensureProfile(data, user);
+      const stats = data.stats[user.id] || createStats();
+      return {
+        user: withProfile(data, user),
+        elo: Number(stats.elo || 1000),
+        level: Number(stats.level || levelFromElo(stats.elo)),
+        wins: Number(stats.wins || 0),
+        losses: Number(stats.losses || 0),
+        matches: Number(stats.matches || 0),
+        kd: kdRatio(stats)
+      };
+    })
+    .sort((a, b) => b.elo - a.elo || b.wins - a.wins || b.kd - a.kd)
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+}
+
+function queueStatus(data, userId) {
+  const activeMatches = data.matches
+    .filter((match) => ['awaiting_accept', 'ready', 'live'].includes(match.status))
+    .filter((match) => (match.players || []).some((player) => player.userId === userId))
+    .map((match) => publicMatch(data, match));
+
+  return {
+    queued: data.queue.entries.some((entry) => entry.userId === userId),
+    queueSize: data.queue.entries.length,
+    queuedAt: data.queue.entries.find((entry) => entry.userId === userId)?.queuedAt || null,
+    activeMatch: activeMatches[0] || null
+  };
+}
+
+function firstAvailableServer(data) {
+  return data.servers.find((server) => serializeServer(server).status === 'online') || data.servers[0] || null;
+}
+
+function makeMatch(data, queuedEntries) {
+  const server = firstAvailableServer(data);
+  const map = server?.config?.map || 'de_dust2';
+  const players = queuedEntries.slice(0, MATCH_SIZE).map((entry, index) => ({
+    userId: entry.userId,
+    team: index % 2 === 0 ? 'A' : 'B',
+    accepted: false,
+    stats: {
+      kills: 0,
+      deaths: 0,
+      assists: 0,
+      headshots: 0
+    }
+  }));
+
+  return {
+    id: crypto.randomUUID(),
+    map,
+    serverId: server?.id || null,
+    status: 'awaiting_accept',
+    winnerTeam: null,
+    createdAt: new Date().toISOString(),
+    acceptedAt: null,
+    completedAt: null,
+    acceptExpiresAt: new Date(Date.now() + MATCH_ACCEPT_TTL_MS).toISOString(),
+    players
+  };
+}
+
+function createMatchIfReady(current) {
+  const activeUserIds = new Set(
+    current.matches
+      .filter((match) => ['awaiting_accept', 'ready', 'live'].includes(match.status))
+      .flatMap((match) => (match.players || []).map((player) => player.userId))
+  );
+  current.queue.entries = current.queue.entries.filter((entry) => !activeUserIds.has(entry.userId));
+
+  if (current.queue.entries.length < MATCH_SIZE) return null;
+
+  const selectedEntries = current.queue.entries.slice(0, MATCH_SIZE);
+  const match = makeMatch(current, selectedEntries);
+  current.matches.unshift(match);
+  current.queue.entries = current.queue.entries.filter(
+    (entry) => !selectedEntries.some((selected) => selected.userId === entry.userId)
+  );
+  current.queue.activeMatchId = match.id;
+  return match;
+}
+
+function resolveExpiredAccepts(current) {
+  const now = Date.now();
+  for (const match of current.matches) {
+    if (match.status !== 'awaiting_accept') continue;
+    if (!match.acceptExpiresAt || Date.parse(match.acceptExpiresAt) > now) continue;
+
+    match.status = 'cancelled';
+    match.cancelledAt = new Date().toISOString();
+    match.cancelReason = 'Accept expired';
+  }
+}
+
+function addAuditLog(current, actor, action, details = {}) {
+  current.auditLogs.push({
+    id: crypto.randomUUID(),
+    actorId: actor?.id || null,
+    action,
+    details,
+    at: new Date().toISOString()
+  });
+  current.auditLogs = current.auditLogs.slice(-500);
+}
+
+function applyMatchResult(current, match, body, actor) {
+  const winnerTeam = String(body.winnerTeam || match.winnerTeam || '').toUpperCase();
+  if (!['A', 'B'].includes(winnerTeam)) {
+    throw new Error('Winner team must be A or B');
+  }
+
+  const statsByUser = body.playerStats && typeof body.playerStats === 'object' ? body.playerStats : {};
+  for (const player of match.players || []) {
+    const patch = statsByUser[player.userId] || {};
+    player.stats = {
+      kills: Math.max(0, Number(patch.kills ?? player.stats?.kills ?? 0)),
+      deaths: Math.max(0, Number(patch.deaths ?? player.stats?.deaths ?? 0)),
+      assists: Math.max(0, Number(patch.assists ?? player.stats?.assists ?? 0)),
+      headshots: Math.max(0, Number(patch.headshots ?? player.stats?.headshots ?? 0))
+    };
+  }
+
+  const wasCompleted = match.status === 'completed';
+  match.status = 'completed';
+  match.winnerTeam = winnerTeam;
+  match.completedAt = new Date().toISOString();
+  match.approvedBy = actor?.id || null;
+
+  if (!wasCompleted) {
+    for (const player of match.players || []) {
+      const stats = current.stats[player.userId] || createStats();
+      const won = player.team === winnerTeam;
+      stats.matches = Number(stats.matches || 0) + 1;
+      stats.wins = Number(stats.wins || 0) + (won ? 1 : 0);
+      stats.losses = Number(stats.losses || 0) + (won ? 0 : 1);
+      stats.kills = Number(stats.kills || 0) + Number(player.stats?.kills || 0);
+      stats.deaths = Number(stats.deaths || 0) + Number(player.stats?.deaths || 0);
+      stats.assists = Number(stats.assists || 0) + Number(player.stats?.assists || 0);
+      stats.headshots = Number(stats.headshots || 0) + Number(player.stats?.headshots || 0);
+      stats.elo = Math.max(100, Number(stats.elo || 1000) + (won ? 25 : -25));
+      stats.level = levelFromElo(stats.elo);
+      current.stats[player.userId] = stats;
+    }
+  }
+
+  addAuditLog(current, actor, 'match.result', { matchId: match.id, winnerTeam });
 }
 
 function sanitizeServerConfig(currentConfig, patch = {}) {
@@ -606,6 +828,82 @@ async function handlePlayerSteamPatch(req, res, context) {
   sendJson(req, res, 200, { user: withProfile(data, user) });
 }
 
+function handleQueueStatus(req, res, context) {
+  const data = updateData((current) => {
+    resolveExpiredAccepts(current);
+    createMatchIfReady(current);
+    return current;
+  });
+  sendJson(req, res, 200, { queue: queueStatus(data, context.user.id) });
+}
+
+async function handleQueueJoin(req, res, context) {
+  const body = await readJsonBody(req);
+  const data = updateData((current) => {
+    resolveExpiredAccepts(current);
+    const active = queueStatus(current, context.user.id).activeMatch;
+    if (active) return current;
+
+    if (!current.queue.entries.some((entry) => entry.userId === context.user.id)) {
+      current.queue.entries.push({
+        id: crypto.randomUUID(),
+        userId: context.user.id,
+        mapPreference: String(body.mapPreference || 'any').slice(0, 32),
+        queuedAt: new Date().toISOString()
+      });
+    }
+    createMatchIfReady(current);
+    return current;
+  });
+  sendJson(req, res, 200, { queue: queueStatus(data, context.user.id) });
+}
+
+function handleQueueLeave(req, res, context) {
+  const data = updateData((current) => {
+    current.queue.entries = current.queue.entries.filter((entry) => entry.userId !== context.user.id);
+    return current;
+  });
+  sendJson(req, res, 200, { queue: queueStatus(data, context.user.id) });
+}
+
+function handlePlayerMatches(req, res, context) {
+  const data = updateData((current) => {
+    resolveExpiredAccepts(current);
+    return current;
+  });
+  const matches = data.matches
+    .filter((match) => (match.players || []).some((player) => player.userId === context.user.id))
+    .map((match) => publicMatch(data, match));
+  sendJson(req, res, 200, { matches });
+}
+
+async function handleMatchAccept(req, res, context, matchId) {
+  const data = updateData((current) => {
+    resolveExpiredAccepts(current);
+    const match = current.matches.find((entry) => entry.id === matchId);
+    if (!match) throw new Error('Match not found');
+    if (match.status !== 'awaiting_accept') throw new Error('Match is not waiting for accept');
+
+    const player = (match.players || []).find((entry) => entry.userId === context.user.id);
+    if (!player) throw new Error('You are not in this match');
+
+    player.accepted = true;
+    player.acceptedAt = new Date().toISOString();
+    if (match.players.every((entry) => entry.accepted)) {
+      match.status = 'ready';
+      match.acceptedAt = new Date().toISOString();
+    }
+    return current;
+  });
+  const match = data.matches.find((entry) => entry.id === matchId);
+  sendJson(req, res, 200, { match: publicMatch(data, match), queue: queueStatus(data, context.user.id) });
+}
+
+function handleLeaderboard(req, res) {
+  const data = readData();
+  sendJson(req, res, 200, { leaderboard: leaderboard(data) });
+}
+
 function adminSummary(data) {
   const users = data.users;
   return {
@@ -613,6 +911,8 @@ function adminSummary(data) {
     activeUsers: users.filter((user) => user.status === 'active').length,
     bannedUsers: users.filter((user) => user.status === 'banned').length,
     matches: data.matches.length,
+    activeMatches: data.matches.filter((match) => ['awaiting_accept', 'ready', 'live'].includes(match.status)).length,
+    queueSize: data.queue.entries.length,
     serversOnline: data.servers.map(serializeServer).filter((server) => server.status === 'online').length
   };
 }
@@ -708,6 +1008,43 @@ async function handleAdminServerStop(req, res, serverId) {
   });
 }
 
+function handleAdminMatches(req, res, context) {
+  const data = updateData((current) => {
+    resolveExpiredAccepts(current);
+    return current;
+  });
+  sendJson(req, res, 200, {
+    matches: data.matches.map((match) => publicMatch(data, match)),
+    queue: data.queue
+  });
+}
+
+async function handleAdminMatchPatch(req, res, context, matchId) {
+  const body = await readJsonBody(req);
+  const data = updateData((current) => {
+    const match = current.matches.find((entry) => entry.id === matchId);
+    if (!match) throw new Error('Match not found');
+
+    if (body.status) {
+      if (!['awaiting_accept', 'ready', 'live', 'completed', 'cancelled'].includes(body.status)) {
+        throw new Error('Invalid match status');
+      }
+      match.status = body.status;
+      if (body.status === 'live') match.startedAt = match.startedAt || new Date().toISOString();
+      if (body.status === 'cancelled') match.cancelledAt = new Date().toISOString();
+      addAuditLog(current, context.user, 'match.status', { matchId, status: body.status });
+    }
+
+    if (body.winnerTeam || body.playerStats) {
+      applyMatchResult(current, match, body, context.user);
+    }
+
+    return current;
+  });
+  const match = data.matches.find((entry) => entry.id === matchId);
+  sendJson(req, res, 200, { match: publicMatch(data, match) });
+}
+
 async function routeRequest(req, res) {
   setCors(req, res);
   if (req.method === 'OPTIONS') {
@@ -737,6 +1074,11 @@ async function routeRequest(req, res) {
 
     if (req.method === 'POST' && pathname === '/api/auth/steam/session') {
       handleSteamSessionCreate(req, res);
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/api/auth/steam/direct') {
+      await handleSteamDirectLogin(req, res);
       return;
     }
 
@@ -791,6 +1133,49 @@ async function routeRequest(req, res) {
       return;
     }
 
+    if (req.method === 'GET' && pathname === '/api/player/queue') {
+      const context = requireUser(req, res);
+      if (!context) return;
+      handleQueueStatus(req, res, context);
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/api/player/queue') {
+      const context = requireUser(req, res);
+      if (!context) return;
+      await handleQueueJoin(req, res, context);
+      return;
+    }
+
+    if (req.method === 'DELETE' && pathname === '/api/player/queue') {
+      const context = requireUser(req, res);
+      if (!context) return;
+      handleQueueLeave(req, res, context);
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/api/player/matches') {
+      const context = requireUser(req, res);
+      if (!context) return;
+      handlePlayerMatches(req, res, context);
+      return;
+    }
+
+    const playerMatchAccept = pathname.match(/^\/api\/player\/matches\/([^/]+)\/accept$/);
+    if (req.method === 'POST' && playerMatchAccept) {
+      const context = requireUser(req, res);
+      if (!context) return;
+      await handleMatchAccept(req, res, context, playerMatchAccept[1]);
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/api/player/leaderboard') {
+      const context = requireUser(req, res);
+      if (!context) return;
+      handleLeaderboard(req, res);
+      return;
+    }
+
     if ((req.method === 'POST' || req.method === 'PATCH') && pathname === '/api/player/steam') {
       const context = requireUser(req, res);
       if (!context) return;
@@ -827,6 +1212,21 @@ async function routeRequest(req, res) {
       sendJson(req, res, 200, {
         servers: context.data.servers.map(serializeServer)
       });
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/api/admin/matches') {
+      const context = requireAdmin(req, res);
+      if (!context) return;
+      handleAdminMatches(req, res, context);
+      return;
+    }
+
+    const adminMatch = pathname.match(/^\/api\/admin\/matches\/([^/]+)$/);
+    if (adminMatch && req.method === 'PATCH') {
+      const context = requireAdmin(req, res);
+      if (!context) return;
+      await handleAdminMatchPatch(req, res, context, adminMatch[1]);
       return;
     }
 

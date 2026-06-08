@@ -51,7 +51,7 @@ export default function JoinServerPage({ addToast, liveServers = [] }) {
     <div className="mx-auto flex max-w-5xl flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">Join Now</h2>
+          <h2 className="text-2xl font-bold">Connect Game</h2>
           <p className="text-sm text-muted-foreground">Live match servers</p>
         </div>
         <Button variant="secondary" onClick={refresh} disabled={loading}>
@@ -67,7 +67,7 @@ export default function JoinServerPage({ addToast, liveServers = [] }) {
               <Wifi className="h-5 w-5" />
             </div>
             <CardTitle>No Live Server</CardTitle>
-            <CardDescription>Join Now appears in the sidebar when admin starts a server.</CardDescription>
+            <CardDescription>Connect Game appears in the sidebar when admin starts a server.</CardDescription>
           </CardHeader>
         </Card>
       ) : (
@@ -104,7 +104,7 @@ export default function JoinServerPage({ addToast, liveServers = [] }) {
                 </div>
                 <Button onClick={() => joinServer(server)} disabled={joining === server.id}>
                   <Play className="h-4 w-4" />
-                  {joining === server.id ? 'Launching...' : 'Join Now'}
+                  {joining === server.id ? 'Launching...' : 'Connect Game'}
                 </Button>
               </CardContent>
             </Card>

@@ -329,15 +329,24 @@ td span {
 }
 
 .pill.active,
+.pill.ready,
+.pill.live,
+.pill.completed,
 .status.online {
   background: rgba(16, 185, 129, 0.15);
   color: #6ee7b7;
 }
 
 .pill.banned,
+.pill.cancelled,
 .status.offline {
   background: rgba(248, 113, 113, 0.14);
   color: #fca5a5;
+}
+
+.pill.awaiting_accept {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fcd34d;
 }
 
 .actions {

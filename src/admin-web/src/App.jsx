@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, Ban, CheckCircle2, LogOut, Play, Power, Save, Server, Shield, Users } from 'lucide-react';
+import { Activity, Ban, CheckCircle2, LogOut, Play, Power, Save, Server, Shield, Swords, Users } from 'lucide-react';
 import { adminApi, getToken, login, logout, me } from './api';
 
 function Notice({ notice }) {
@@ -32,6 +32,10 @@ function kdRatio(stats = {}) {
   const kills = Number(stats.kills || 0);
   const deaths = Number(stats.deaths || 0);
   return deaths > 0 ? (kills / deaths).toFixed(2) : kills.toFixed(2);
+}
+
+function playerName(player) {
+  return player?.user?.profile?.displayName || player?.user?.username || 'Player';
 }
 
 function Login({ onLogin, setNotice }) {
@@ -78,6 +82,8 @@ export default function App() {
   const [summary, setSummary] = useState(null);
   const [users, setUsers] = useState([]);
   const [servers, setServers] = useState([]);
+  const [matches, setMatches] = useState([]);
+  const [queue, setQueue] = useState({ entries: [] });
   const [serverForms, setServerForms] = useState({});
   const [logs, setLogs] = useState([]);
   const [notice, setNotice] = useState(null);
@@ -91,14 +97,17 @@ export default function App() {
   };
 
   const refresh = async () => {
-    const [summaryData, usersData, serversData] = await Promise.all([
+    const [summaryData, usersData, serversData, matchesData] = await Promise.all([
       adminApi.summary(),
       adminApi.users(),
-      adminApi.servers()
+      adminApi.servers(),
+      adminApi.matches()
     ]);
     setSummary(summaryData.summary);
     setUsers(usersData.users);
     setServers(serversData.servers);
+    setMatches(matchesData.matches || []);
+    setQueue(matchesData.queue || { entries: [] });
     setServerForms((current) => {
       const next = { ...current };
       for (const server of serversData.servers) {
@@ -154,7 +163,9 @@ export default function App() {
     { label: 'Users', value: summary?.users ?? 0, icon: Users },
     { label: 'Active', value: summary?.activeUsers ?? 0, icon: CheckCircle2 },
     { label: 'Banned', value: summary?.bannedUsers ?? 0, icon: Ban },
-    { label: 'Servers Online', value: summary?.serversOnline ?? 0, icon: Server }
+    { label: 'Servers Online', value: summary?.serversOnline ?? 0, icon: Server },
+    { label: 'Queue', value: summary?.queueSize ?? queue.entries?.length ?? 0, icon: Swords },
+    { label: 'Live Matches', value: summary?.activeMatches ?? 0, icon: Activity }
   ]), [summary]);
 
   const updateUser = async (user, patch) => {
@@ -213,6 +224,19 @@ export default function App() {
       await adminApi.stopServer(serverId);
       await refresh();
       showNotice('Server stop requested', 'success');
+    } catch (error) {
+      showNotice(error.message, 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const updateMatch = async (matchId, patch) => {
+    setBusy(`match-${matchId}`);
+    try {
+      await adminApi.updateMatch(matchId, patch);
+      await refresh();
+      showNotice('Match updated', 'success');
     } catch (error) {
       showNotice(error.message, 'error');
     } finally {
@@ -337,6 +361,92 @@ export default function App() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>Matches</h2>
+              <p>Queue, active games, and results</p>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Map</th>
+                  <th>Server</th>
+                  <th>Team A</th>
+                  <th>Team B</th>
+                  <th>Winner</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matches.map((match) => {
+                  const teamA = match.players.filter((player) => player.team === 'A');
+                  const teamB = match.players.filter((player) => player.team === 'B');
+                  return (
+                    <tr key={match.id}>
+                      <td><span className={`pill ${match.status}`}>{match.status}</span></td>
+                      <td>{match.map}</td>
+                      <td>
+                        <strong>{match.server?.hostname || match.server?.name || 'Unassigned'}</strong>
+                        {match.server && <span>{match.server.ip}:{match.server.port}</span>}
+                      </td>
+                      <td>{teamA.map((player) => `${playerName(player)}${player.accepted ? ' ✓' : ''}`).join(', ')}</td>
+                      <td>{teamB.map((player) => `${playerName(player)}${player.accepted ? ' ✓' : ''}`).join(', ')}</td>
+                      <td>{match.winnerTeam || '-'}</td>
+                      <td>{new Date(match.createdAt).toLocaleString()}</td>
+                      <td className="actions">
+                        {match.status === 'ready' && (
+                          <button
+                            type="button"
+                            disabled={busy === `match-${match.id}`}
+                            onClick={() => updateMatch(match.id, { status: 'live' })}
+                          >
+                            Mark Live
+                          </button>
+                        )}
+                        {match.status !== 'completed' && match.status !== 'cancelled' && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={busy === `match-${match.id}`}
+                              onClick={() => updateMatch(match.id, { winnerTeam: 'A' })}
+                            >
+                              Team A Won
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy === `match-${match.id}`}
+                              onClick={() => updateMatch(match.id, { winnerTeam: 'B' })}
+                            >
+                              Team B Won
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy === `match-${match.id}`}
+                              onClick={() => updateMatch(match.id, { status: 'cancelled' })}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {matches.length === 0 && (
+                  <tr>
+                    <td colSpan="8">No matches yet.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, Crosshair, ExternalLink, Link2, Save, Shield, Trophy, UserCircle } from 'lucide-react';
+import { Activity, Crosshair, ExternalLink, Link2, Play, Save, Server, Shield, Trophy, UserCircle } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -12,10 +12,11 @@ function statValue(value) {
   return Number(value || 0).toLocaleString();
 }
 
-export default function PlayerHomePage({ addToast, onUserChange, user }) {
+export default function PlayerHomePage({ addToast, liveServers = [], onUserChange, user }) {
   const [stats, setStats] = useState(user?.stats || null);
   const [saving, setSaving] = useState(false);
   const [savingSteam, setSavingSteam] = useState(false);
+  const [connectingServer, setConnectingServer] = useState('');
   const [profile, setProfile] = useState({
     displayName: user?.profile?.displayName || user?.username || '',
     country: user?.profile?.country || '',
@@ -100,11 +101,48 @@ export default function PlayerHomePage({ addToast, onUserChange, user }) {
     }
   };
 
+  const connectGame = async (server) => {
+    setConnectingServer(server.id);
+    try {
+      await window.electronAPI.launchCSGO(['+connect', `${server.ip}:${server.port}`]);
+      addToast(`Connecting to ${server.hostname || server.name}`, 'success');
+    } catch (error) {
+      addToast(error.message, 'error');
+    } finally {
+      setConnectingServer('');
+    }
+  };
+
   const rankLabel = `Level ${stats?.level || 1}`;
   const steamConnected = Boolean(user?.profile?.steamId || user?.profile?.steamProfileUrl);
+  const primaryServer = liveServers[0] || null;
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
+      {primaryServer && (
+        <Card className="border-emerald-500/30 bg-emerald-500/10">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-300">
+                  <Server className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle>{primaryServer.hostname || primaryServer.name}</CardTitle>
+                  <CardDescription>
+                    {primaryServer.ip}:{primaryServer.port} · {primaryServer.map} · {primaryServer.gameMode}
+                  </CardDescription>
+                </div>
+              </div>
+              <Button onClick={() => connectGame(primaryServer)} disabled={connectingServer === primaryServer.id}>
+                <Play className="h-4 w-4" />
+                {connectingServer === primaryServer.id ? 'Launching...' : 'Connect Game'}
+              </Button>
+            </div>
+          </CardHeader>
+        </Card>
+      )}
+
       <section className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <Card>
           <CardHeader>

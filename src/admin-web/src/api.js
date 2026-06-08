@@ -61,6 +61,11 @@ export async function me() {
 
 export const adminApi = {
   logs: (serverId) => request(`/admin/servers/${serverId}/logs`),
+  matches: () => request('/admin/matches'),
+  updateMatch: (matchId, patch) => request(`/admin/matches/${matchId}`, {
+    method: 'PATCH',
+    body: patch
+  }),
   saveServer: (serverId, config) => request(`/admin/servers/${serverId}`, {
     method: 'PATCH',
     body: { config }

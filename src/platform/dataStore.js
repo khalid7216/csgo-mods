@@ -23,6 +23,13 @@ function createStats() {
   };
 }
 
+function createQueueState() {
+  return {
+    entries: [],
+    activeMatchId: null
+  };
+}
+
 function createProfile(user, patch = {}) {
   return {
     userId: user.id,
@@ -113,8 +120,11 @@ function createSeedData() {
         }
       }
     ],
+    queue: createQueueState(),
     matches: [],
-    loginLogs: []
+    loginLogs: [],
+    bans: [],
+    auditLogs: []
   };
 }
 
@@ -177,8 +187,15 @@ function normalizeData(data) {
   normalized.servers = Array.isArray(normalized.servers) && normalized.servers.length
     ? normalized.servers
     : createSeedData().servers;
+  normalized.queue = normalized.queue && typeof normalized.queue === 'object'
+    ? normalized.queue
+    : createQueueState();
+  normalized.queue.entries = Array.isArray(normalized.queue.entries) ? normalized.queue.entries : [];
+  normalized.queue.activeMatchId = normalized.queue.activeMatchId || null;
   normalized.matches = Array.isArray(normalized.matches) ? normalized.matches : [];
   normalized.loginLogs = Array.isArray(normalized.loginLogs) ? normalized.loginLogs : [];
+  normalized.bans = Array.isArray(normalized.bans) ? normalized.bans : [];
+  normalized.auditLogs = Array.isArray(normalized.auditLogs) ? normalized.auditLogs : [];
 
   for (const user of normalized.users) {
     ensureProfile(normalized, user);
@@ -189,6 +206,7 @@ function normalizeData(data) {
 
 module.exports = {
   createProfile,
+  createQueueState,
   createStats,
   ensureProfile,
   readData,

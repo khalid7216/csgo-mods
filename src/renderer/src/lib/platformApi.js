@@ -74,6 +74,15 @@ async function pollSteamAuth(sessionId) {
   return data;
 }
 
+async function directSteamLogin(steamInput) {
+  const data = await request('/auth/steam/direct', {
+    method: 'POST',
+    body: { steamInput }
+  });
+  setToken(data.token);
+  return data.user;
+}
+
 async function me() {
   const data = await request('/me');
   return data.user;
@@ -97,6 +106,44 @@ async function playerServers() {
   return data.servers || [];
 }
 
+async function queueStatus() {
+  const data = await request('/player/queue');
+  return data.queue;
+}
+
+async function joinQueue(mapPreference = 'any') {
+  const data = await request('/player/queue', {
+    method: 'POST',
+    body: { mapPreference }
+  });
+  return data.queue;
+}
+
+async function leaveQueue() {
+  const data = await request('/player/queue', {
+    method: 'DELETE'
+  });
+  return data.queue;
+}
+
+async function acceptMatch(matchId) {
+  const data = await request(`/player/matches/${encodeURIComponent(matchId)}/accept`, {
+    method: 'POST',
+    body: {}
+  });
+  return data;
+}
+
+async function matches() {
+  const data = await request('/player/matches');
+  return data.matches || [];
+}
+
+async function leaderboard() {
+  const data = await request('/player/leaderboard');
+  return data.leaderboard || [];
+}
+
 async function connectSteam(steam) {
   const data = await request('/player/steam', {
     method: 'POST',
@@ -106,13 +153,20 @@ async function connectSteam(steam) {
 }
 
 export const platformApi = {
+  acceptMatch,
   connectSteam,
+  directSteamLogin,
   getToken,
+  joinQueue,
+  leaderboard,
+  leaveQueue,
   login,
   logout: () => setToken(''),
+  matches,
   me,
   playerServers,
   pollSteamAuth,
+  queueStatus,
   register,
   startSteamAuth,
   stats,
