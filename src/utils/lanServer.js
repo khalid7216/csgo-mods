@@ -455,7 +455,7 @@ r_shadowlod 0
 }
 
 // ── LAN broadcast / discovery ───────────────────────────────────────────────
-const BROADCAST_PORT = 27016;
+const BROADCAST_PORT = 27015;
 let broadcastInterval = null;
 let broadcastSocket = null;
 let listenSocket = null;

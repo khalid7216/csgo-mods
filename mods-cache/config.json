@@ -11,7 +11,7 @@
     "friendlyFire": true,
     "maxPlayers": 16,
     "hostname": "CSGO Mod Manager Server",
-    "port": 27016,
+    "port": 27015,
     "rconPassword": "changeme",
     "customCommands": "mp_restartgame 1\nmp_freezetime 0\nmp_roundtime 3\nmp_maxrounds 30"
   },
