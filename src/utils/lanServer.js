@@ -462,7 +462,10 @@ let listenSocket = null;
 
 function startBroadcast(serverInfo) {
   if (broadcastSocket) stopBroadcast();
-  broadcastSocket = dgram.createSocket('udp4');
+  broadcastSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+  broadcastSocket.on('error', (err) => {
+    console.error('[lanServer] broadcast error:', err.message);
+  });
   broadcastSocket.bind(() => {
     broadcastSocket.setBroadcast(true);
     const message = JSON.stringify({
@@ -474,10 +477,13 @@ function startBroadcast(serverInfo) {
       gameMode: serverInfo.gameMode,
       players: serverInfo.players || 0
     });
+    console.log('[lanServer] broadcasting on port', BROADCAST_PORT);
     broadcastInterval = setInterval(() => {
       try {
         broadcastSocket.send(message, 0, message.length, BROADCAST_PORT, '255.255.255.255');
-      } catch {}
+      } catch (err) {
+        console.error('[lanServer] send error:', err.message);
+      }
     }, 3000);
   });
 }
@@ -495,18 +501,22 @@ function stopBroadcast() {
 
 function startListening(onServerFound) {
   stopListening();
-  listenSocket = dgram.createSocket('udp4');
-  listenSocket.on('error', () => {});
+  listenSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+  listenSocket.on('error', (err) => {
+    console.error('[lanServer] listen error:', err.message);
+  });
   listenSocket.on('message', (msg) => {
     try {
       const data = JSON.parse(msg.toString());
-      if (data.type === 'CSGO_MOD_MANAGER_SERVER') onServerFound(data);
+      if (data.type === 'CSGO_MOD_MANAGER_SERVER') {
+        console.log('[lanServer] server found:', data.hostname);
+        onServerFound(data);
+      }
     } catch {}
   });
   listenSocket.bind(BROADCAST_PORT, () => {
-    listenSocket.setBroadcast(true);
+    console.log('[lanServer] listening on port', BROADCAST_PORT);
   });
-  return listenSocket;
 }
 
 function stopListening() {

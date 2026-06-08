@@ -395,9 +395,12 @@ ipcMain.handle('stop-broadcast', () => {
 });
 
 ipcMain.handle('start-listening', () => {
-  return startListening((serverData) => {
-    mainWindow.webContents.send('server-found', serverData);
+  startListening((serverData) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('server-found', serverData);
+    }
   });
+  return true;
 });
 
 ipcMain.handle('stop-listening', () => {
