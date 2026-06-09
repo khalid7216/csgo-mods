@@ -7,7 +7,6 @@ const dgram = require('dgram');
 const STEAM_DIR = 'C:\\Program Files (x86)\\Steam';
 const STEAMCMD_DIR = path.join(STEAM_DIR, 'steamcmd');
 
-// The dedicated server is in the project root (parent of csgo-mods)
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 
 const DS_SEARCH_PATHS = [
@@ -50,8 +49,32 @@ function asCfgLines(commands) {
   return commands.length ? `${commands.join('\n')}\n` : '';
 }
 
-function getLocalIP() {
+const VIRTUAL_KEYWORDS = [
+  'vmware', 'virtualbox', 'vbox', 'hyper-v', 'hyperv',
+  'docker', 'wsl', 'vEthernet', 'bluetooth', 'loopback'
+];
+
+function getLocalLANIP() {
   const interfaces = os.networkInterfaces();
+  let fallback = null;
+
+  for (const name of Object.keys(interfaces)) {
+    const lowerName = name.toLowerCase();
+    const isVirtual = VIRTUAL_KEYWORDS.some((kw) => lowerName.includes(kw));
+    if (isVirtual) continue;
+
+    for (const iface of interfaces[name]) {
+      if (iface.family !== 'IPv4' || iface.internal) continue;
+      if (iface.address.startsWith('169.254.')) {
+        if (!fallback) fallback = iface.address;
+        continue;
+      }
+      return iface.address;
+    }
+  }
+
+  if (fallback) return fallback;
+
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
       if (iface.family === 'IPv4' && !iface.internal) {
@@ -59,6 +82,7 @@ function getLocalIP() {
       }
     }
   }
+
   return '127.0.0.1';
 }
 
@@ -207,7 +231,6 @@ mp_restartgame 1
 `;
   fs.writeFileSync(path.join(cfgDir, 'server.cfg'), cfgContent);
 
-  // Create map-specific CFG - CSGO auto-executes [mapname].cfg on map load
   const mapCfgContent = `${asCfgLines(noWarmupCommands)}mp_freezetime ${freezeTime}
 mp_friendlyfire ${friendlyFire}
 mp_autoteambalance 0
@@ -225,7 +248,6 @@ mp_limitteams 0
 ${asCfgLines(botCfgCommands)}${asCfgLines(customCommands)}
 `;
 
-  // Write autoexec.cfg for SRCDS
   fs.writeFileSync(path.join(cfgDir, 'autoexec.cfg'), autoexecCommands);
 
   await openFirewallPort(config.port || 27015);
@@ -314,7 +336,6 @@ ${asCfgLines(botCfgCommands)}${asCfgLines(customCommands)}
     const output = data.toString();
     if (onOutput) onOutput(output);
 
-    // Detect real player joining
     if (!playerJoined && (output.includes('entered the game') || output.includes('connected'))) {
       playerJoined = true;
       if (onOutput) onOutput('[SERVER] Player detected - running join sequence\n');
@@ -454,36 +475,48 @@ r_shadowlod 0
   return { success: true };
 }
 
-// ── LAN broadcast / discovery ───────────────────────────────────────────────
-const BROADCAST_PORT = 27016;
+const BROADCAST_PORT = 27815;
+const BROADCAST_INTERVAL_MS = 3000;
+
 let broadcastInterval = null;
 let broadcastSocket = null;
 let listenSocket = null;
 
 function startBroadcast(serverInfo) {
   if (broadcastSocket) stopBroadcast();
+
+  const payload = JSON.stringify({
+    type: 'CSGO_MOD_MANAGER_SERVER',
+    ip: serverInfo.ip,
+    port: serverInfo.port,
+    hostname: serverInfo.hostname,
+    map: serverInfo.map,
+    gameMode: serverInfo.gameMode,
+    players: serverInfo.players || 0
+  });
+
   broadcastSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+
   broadcastSocket.on('error', (err) => {
     console.error('[lanServer] broadcast error:', err.message);
   });
+
   broadcastSocket.bind(() => {
     broadcastSocket.setBroadcast(true);
-    const message = JSON.stringify({
-      type: 'CSGO_MOD_MANAGER_SERVER',
-      ip: serverInfo.ip,
-      port: serverInfo.port,
-      hostname: serverInfo.hostname,
-      map: serverInfo.map,
-      gameMode: serverInfo.gameMode,
-      players: serverInfo.players || 0
-    });
+
     broadcastInterval = setInterval(() => {
       try {
-        broadcastSocket.send(message, 0, message.length, BROADCAST_PORT, '255.255.255.255');
+        broadcastSocket.send(payload, 0, payload.length, BROADCAST_PORT, '255.255.255.255');
       } catch (err) {
-        console.error('[lanServer] send error:', err.message);
+        console.error('[lanServer] broadcast send (255.255.255.255) error:', err.message);
       }
-    }, 3000);
+
+      try {
+        broadcastSocket.send(payload, 0, payload.length, BROADCAST_PORT, '127.0.0.1');
+      } catch (err) {
+        console.error('[lanServer] broadcast send (127.0.0.1) error:', err.message);
+      }
+    }, BROADCAST_INTERVAL_MS);
   });
 }
 
@@ -493,35 +526,60 @@ function stopBroadcast() {
     broadcastInterval = null;
   }
   if (broadcastSocket) {
-    try { broadcastSocket.close(); } catch {}
+    try { broadcastSocket.close(); } catch (err) { console.error('[lanServer] close broadcast error:', err.message); }
     broadcastSocket = null;
   }
 }
 
 function startListening(onServerFound) {
-  if (listenSocket) return;
+  if (listenSocket) {
+    console.warn('[lanServer] already listening, ignoring duplicate start');
+    return;
+  }
+
   openFirewallPort(BROADCAST_PORT);
+
   listenSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+
   listenSocket.on('error', (err) => {
     console.error('[lanServer] listen error:', err.message);
   });
+
   listenSocket.on('message', (msg) => {
     try {
       const data = JSON.parse(msg.toString());
       if (data.type === 'CSGO_MOD_MANAGER_SERVER') {
-        console.log('[lanServer] server found:', data.hostname);
         onServerFound(data);
       }
-    } catch {}
+    } catch (err) {
+      console.error('[lanServer] parse error:', err.message);
+    }
   });
-  listenSocket.bind(BROADCAST_PORT);
+
+  listenSocket.bind(BROADCAST_PORT, () => {
+    console.log('[lanServer] listening on port', BROADCAST_PORT);
+  });
 }
 
 function stopListening() {
   if (listenSocket) {
-    try { listenSocket.close(); } catch {}
+    try { listenSocket.close(); } catch (err) { console.error('[lanServer] close listen error:', err.message); }
     listenSocket = null;
   }
 }
 
-module.exports = { getLocalIP, openFirewallPort, installDedicatedServer, findDedicatedServer, startServer, stopServer, getServerStatus, launchCSGO, startBroadcast, stopBroadcast, startListening, stopListening };
+module.exports = {
+  getLocalLANIP,
+  getLocalIP: getLocalLANIP,
+  openFirewallPort,
+  installDedicatedServer,
+  findDedicatedServer,
+  startServer,
+  stopServer,
+  getServerStatus,
+  launchCSGO,
+  startBroadcast,
+  stopBroadcast,
+  startListening,
+  stopListening
+};

@@ -115,15 +115,32 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
   }, [commandQuery]);
 
   useEffect(() => {
-    window.electronAPI.getLocalIP().then(setLocalIP);
-    window.electronAPI.onServerOutput((data) => {
-      setServerOutput((prev) => [...prev.slice(-120), data]);
+    let cancelled = false;
+
+    window.electronAPI.getLocalIP().then((ip) => {
+      if (!cancelled) setLocalIP(ip);
     });
-    window.electronAPI.findDedicatedServer().then(setDsInstalled);
-    window.electronAPI.startListening().catch(() => {});
-    const unsub = window.electronAPI.onServerFound(setDiscoveredServer);
+
+    window.electronAPI.startListening().catch((err) => {
+      console.error('[LANPage] startListening failed:', err);
+    });
+
+    const unsubServerFound = window.electronAPI.onServerFound((data) => {
+      if (!cancelled) setDiscoveredServer(data);
+    });
+
+    window.electronAPI.findDedicatedServer().then((installed) => {
+      if (!cancelled) setDsInstalled(installed);
+    });
+
+    const outputHandler = (data) => {
+      if (!cancelled) setServerOutput((prev) => [...prev.slice(-120), data]);
+    };
+    window.electronAPI.onServerOutput(outputHandler);
+
     return () => {
-      unsub();
+      cancelled = true;
+      unsubServerFound();
       window.electronAPI.stopListening().catch(() => {});
     };
   }, []);
