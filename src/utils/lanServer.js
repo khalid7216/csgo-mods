@@ -475,7 +475,7 @@ r_shadowlod 0
   return { success: true };
 }
 
-const BROADCAST_PORT = 27815;
+const BROADCAST_PORT = 27016;
 const BROADCAST_INTERVAL_MS = 3000;
 
 let broadcastInterval = null;
@@ -537,7 +537,10 @@ function startListening(onServerFound) {
     return;
   }
 
-  openFirewallPort(BROADCAST_PORT);
+  exec(
+    `netsh advfirewall firewall add rule name="CSGO Mod Manager Discovery" dir=in action=allow protocol=UDP localport=${BROADCAST_PORT} >nul 2>&1`,
+    () => {}
+  );
 
   listenSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 

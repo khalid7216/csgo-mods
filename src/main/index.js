@@ -79,7 +79,7 @@ function createWindow() {
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
           "img-src 'self' data: https: blob:; " +
           "media-src 'self' https://res.cloudinary.com; " +
-          "connect-src 'self' http://localhost:4180 http://127.0.0.1:4180 http://*:4180 https://api.gamebanana.com https://gamebanana.com https://api.steampowered.com https://res.cloudinary.com; " +
+          "connect-src 'self' http://localhost:4180 http://127.0.0.1:4180 https://api.gamebanana.com https://gamebanana.com https://api.steampowered.com https://res.cloudinary.com; " +
           "font-src 'self' https://fonts.gstatic.com;"
         ]
       }
@@ -128,6 +128,11 @@ app.whenReady().then(async () => {
   ensureCacheDir();
   await startPlatformApi();
   createWindow();
+  startListening((serverData) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('server-found', serverData);
+    }
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

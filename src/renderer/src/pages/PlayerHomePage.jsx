@@ -17,6 +17,7 @@ export default function PlayerHomePage({ addToast, liveServers = [], onUserChang
   const [saving, setSaving] = useState(false);
   const [savingSteam, setSavingSteam] = useState(false);
   const [connectingServer, setConnectingServer] = useState('');
+  const [platformServer, setPlatformServer] = useState(platformApi.getApiBase());
   const [profile, setProfile] = useState({
     displayName: user?.profile?.displayName || user?.username || '',
     country: user?.profile?.country || '',
@@ -111,6 +112,13 @@ export default function PlayerHomePage({ addToast, liveServers = [], onUserChang
     } finally {
       setConnectingServer('');
     }
+  };
+
+  const switchPlatformServer = () => {
+    const nextBase = platformApi.setApiBase(platformServer);
+    platformApi.logout();
+    addToast(`Platform server set to ${nextBase}`, 'success');
+    onUserChange(null);
   };
 
   const rankLabel = `Level ${stats?.level || 1}`;
@@ -316,6 +324,25 @@ export default function PlayerHomePage({ addToast, liveServers = [], onUserChang
           </CardContent>
         </Card>
       </section>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Platform Server</CardTitle>
+          <CardDescription>Same network backend used for live server detection</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Input
+              value={platformServer}
+              onChange={(event) => setPlatformServer(event.target.value)}
+              placeholder="Admin PC IP, e.g. 192.168.1.20"
+            />
+            <Button type="button" variant="secondary" onClick={switchPlatformServer}>
+              Save Server
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <section className="grid gap-5 md:grid-cols-3">
         <Card>

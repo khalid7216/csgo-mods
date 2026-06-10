@@ -121,10 +121,6 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
       if (!cancelled) setLocalIP(ip);
     });
 
-    window.electronAPI.startListening().catch((err) => {
-      console.error('[LANPage] startListening failed:', err);
-    });
-
     const unsubServerFound = window.electronAPI.onServerFound((data) => {
       if (!cancelled) setDiscoveredServer(data);
     });
@@ -141,7 +137,6 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
     return () => {
       cancelled = true;
       unsubServerFound();
-      window.electronAPI.stopListening().catch(() => {});
     };
   }, []);
 
