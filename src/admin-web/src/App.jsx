@@ -473,7 +473,20 @@ export default function App() {
                   </div>
                   <div className="server-form">
                     <Field label="Map">
-                      <input value={form.map || ''} onChange={(event) => updateServerForm(server.id, 'map', event.target.value)} />
+                      <select value={form.map || 'de_dust2'} onChange={(event) => updateServerForm(server.id, 'map', event.target.value)}>
+                        <option value="de_dust2">de_dust2</option>
+                        <option value="de_inferno">de_inferno</option>
+                        <option value="de_mirage">de_mirage</option>
+                        <option value="de_nuke">de_nuke</option>
+                        <option value="de_train">de_train</option>
+                        <option value="de_overpass">de_overpass</option>
+                        <option value="de_cbble">de_cbble</option>
+                        <option value="de_cache">de_cache</option>
+                        <option value="de_canals">de_canals</option>
+                        <option value="cs_office">cs_office</option>
+                        <option value="cs_italy">cs_italy</option>
+                        <option value="cs_assault">cs_assault</option>
+                      </select>
                     </Field>
                     <Field label="Port">
                       <input value={form.port || ''} type="number" onChange={(event) => updateServerForm(server.id, 'port', Number(event.target.value))} />

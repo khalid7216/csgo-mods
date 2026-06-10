@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   installDedicatedServer: () => ipcRenderer.invoke('install-dedicated-server'),
   findDedicatedServer: () => ipcRenderer.invoke('find-dedicated-server'),
+  launchSteamGame: (steamUrl) => ipcRenderer.invoke('launch-steam-game', steamUrl),
   startBroadcast: (serverInfo) => ipcRenderer.invoke('start-broadcast', serverInfo),
   stopBroadcast: () => ipcRenderer.invoke('stop-broadcast'),
   startListening: () => ipcRenderer.invoke('start-listening'),

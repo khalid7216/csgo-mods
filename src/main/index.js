@@ -389,6 +389,13 @@ ipcMain.handle('open-external', (_, url) => {
   return shell.openExternal(validation.url);
 });
 
+ipcMain.handle('launch-steam-game', (_, steamUrl) => {
+  if (!steamUrl || typeof steamUrl !== 'string' || !steamUrl.startsWith('steam://')) {
+    throw new Error('Invalid Steam URL');
+  }
+  return shell.openExternal(steamUrl);
+});
+
 ipcMain.handle('start-broadcast', (_, serverInfo) => {
   startBroadcast(serverInfo);
   return true;

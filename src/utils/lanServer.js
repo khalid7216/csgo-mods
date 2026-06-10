@@ -162,12 +162,17 @@ function isSteamRunning() {
 }
 
 async function startServer(csgoPath, config, onOutput) {
-  const csgoExe = path.join(csgoPath, 'csgo.exe');
-  if (!fs.existsSync(csgoExe)) {
-    throw new Error('csgo.exe not found at ' + csgoExe);
+  const serverDir = findDedicatedServer() || (fs.existsSync(path.join(csgoPath, 'srcds.exe')) ? csgoPath : null);
+  if (!serverDir) {
+    throw new Error('srcds.exe not found. Install the CSGO Dedicated Server first.');
   }
 
-  const cfgDir = path.join(csgoPath, 'csgo', 'cfg');
+  const srcdsExe = path.join(serverDir, 'srcds.exe');
+  if (!fs.existsSync(srcdsExe)) {
+    throw new Error('srcds.exe not found at ' + srcdsExe);
+  }
+
+  const cfgDir = path.join(serverDir, 'csgo', 'cfg');
   if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true });
 
   const map = config.map || 'de_dust2';
@@ -265,7 +270,6 @@ ${asCfgLines(botCfgCommands)}${asCfgLines(customCommands)}
 
   const args = [
     '-game', 'csgo',
-    '-console',
     '-usercon',
     '+sv_lan', '1',
     ...gameModeArgs[config.gameMode || 'casual'],
@@ -293,81 +297,18 @@ ${asCfgLines(botCfgCommands)}${asCfgLines(customCommands)}
     ...botArgs,
   ];
 
-  fs.writeFileSync(path.join(csgoPath, 'steam_appid.txt'), '4465480');
+  fs.writeFileSync(path.join(serverDir, 'steam_appid.txt'), '740');
 
-  if (onOutput) onOutput(`Starting ${config.gameMode} server on ${config.map} | Bots: ${config.botsEnabled ? 'ON' : 'OFF'}\n`);
-  serverProcess = spawn(csgoExe, args, {
-    cwd: csgoPath,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, SteamAppId: '4465480', SteamGameId: '4465480' }
+  if (onOutput) onOutput(`Starting dedicated ${config.gameMode} server on ${config.map} | Bots: ${config.botsEnabled ? 'ON' : 'OFF'}\n`);
+  serverProcess = spawn(srcdsExe, args, {
+    cwd: serverDir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, SteamAppId: '740', SteamGameId: '740' }
   });
   serverProcess.unref();
 
-  const send = (cmd) => {
-    try { if (serverProcess && serverProcess.stdin) serverProcess.stdin.write(cmd); } catch {}
-  };
-
-  const sendCommands = (commands) => {
-    for (const command of commands) {
-      send(`${command}\n`);
-    }
-  };
-
-  const startupCommands = [
-    ...noWarmupCommands,
-    `mp_freezetime ${freezeTime}`,
-    `mp_friendlyfire ${friendlyFire}`,
-    'mp_autoteambalance 0',
-    'mp_limitteams 0',
-    'mp_autokick 0',
-    ...botCfgCommands
-  ];
-
-  for (const delay of [1000, 3000, 6000]) {
-    setTimeout(() => sendCommands(startupCommands), delay);
-  }
-  if (customCommands.length) {
-    setTimeout(() => sendCommands(customCommands), 7000);
-  }
-
-  let playerJoined = false;
-
   serverProcess.stdout.on('data', (data) => {
-    const output = data.toString();
-    if (onOutput) onOutput(output);
-
-    if (!playerJoined && (output.includes('entered the game') || output.includes('connected'))) {
-      playerJoined = true;
-      if (onOutput) onOutput('[SERVER] Player detected - running join sequence\n');
-
-      setTimeout(() => {
-        sendCommands(noWarmupCommands);
-      }, 500);
-
-      setTimeout(() => {
-        send(`mp_friendlyfire ${friendlyFire}\n`);
-      }, 1500);
-
-      setTimeout(() => {
-        send(`mp_freezetime ${freezeTime}\n`);
-        send('mp_autoteambalance 0\n');
-        send('mp_limitteams 0\n');
-      }, 2500);
-
-      setTimeout(() => {
-        if (!config.botsEnabled) {
-          send('bot_kick all\n');
-          send('bot_stop 1\n');
-          send('bot_quota 0\n');
-        } else {
-          send('bot_kick all\n');
-          send('bot_quota 5\n');
-          send('bot_difficulty 1\n');
-          send('bot_join_after_player 1\n');
-        }
-        send('bot_quota_mode fill\n');
-      }, 3500);
-    }
+    if (onOutput) onOutput(data.toString());
   });
 
   serverProcess.stderr.on('data', (data) => {
@@ -475,7 +416,7 @@ r_shadowlod 0
   return { success: true };
 }
 
-const BROADCAST_PORT = 27016;
+const BROADCAST_PORT = 28178;
 const BROADCAST_INTERVAL_MS = 3000;
 
 let broadcastInterval = null;
@@ -538,7 +479,7 @@ function startListening(onServerFound) {
   }
 
   exec(
-    `netsh advfirewall firewall add rule name="CSGO Mod Manager Discovery" dir=in action=allow protocol=UDP localport=${BROADCAST_PORT} >nul 2>&1`,
+    `netsh advfirewall firewall add rule name="CSGO Mod Manager Discovery ${BROADCAST_PORT}" dir=in action=allow protocol=UDP localport=${BROADCAST_PORT} >nul 2>&1`,
     () => {}
   );
 
@@ -549,14 +490,15 @@ function startListening(onServerFound) {
   });
 
   listenSocket.on('message', (msg) => {
+    const str = msg.toString();
+    if (str.charCodeAt(0) !== 123) return;
     try {
-      const data = JSON.parse(msg.toString());
+      const data = JSON.parse(str);
       if (data.type === 'CSGO_MOD_MANAGER_SERVER') {
+        console.log('[lanServer] server found:', data.hostname);
         onServerFound(data);
       }
-    } catch (err) {
-      console.error('[lanServer] parse error:', err.message);
-    }
+    } catch {}
   });
 
   listenSocket.bind(BROADCAST_PORT, () => {

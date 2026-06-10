@@ -37,19 +37,27 @@ const COMMAND_SUGGESTIONS = [
   { command: 'say Server ready', hint: 'Server chat' }
 ];
 
-const maps = [
-  'de_dust2',
-  'de_inferno',
-  'de_mirage',
-  'de_nuke',
-  'de_train',
-  'de_overpass',
-  'de_cbble',
-  'de_cache',
-  'de_canals',
-  'cs_office',
-  'cs_italy',
-  'cs_assault'
+const mapGroups = [
+  {
+    label: 'Active Duty',
+    maps: ['de_ancient', 'de_anubis', 'de_dust2', 'de_inferno', 'de_mirage', 'de_nuke', 'de_overpass', 'de_train', 'de_vertigo']
+  },
+  {
+    label: 'Reserve / Other',
+    maps: ['de_breach', 'de_cache', 'de_canals', 'de_cbble', 'de_chlorine', 'de_grind', 'de_mocha', 'de_season', 'de_stmarc', 'de_subzero', 'de_sugarcane', 'de_tuscan']
+  },
+  {
+    label: 'Hostage',
+    maps: ['cs_agency', 'cs_assault', 'cs_docks', 'cs_insertion', 'cs_italy', 'cs_office', 'cs_workout']
+  },
+  {
+    label: 'Wingman',
+    maps: ['de_bank', 'de_lake', 'de_safehouse', 'de_shortdust', 'de_shortnuke']
+  },
+  {
+    label: 'Arms Race',
+    maps: ['ar_baggage', 'ar_monastery', 'ar_shoots']
+  }
 ];
 
 const gameModes = [
@@ -215,8 +223,6 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
 
     setLoading(true);
     try {
-      setServerConfig(parsedConfig);
-      await saveServerConfig(parsedConfig);
       await window.electronAPI.startServer(parsedConfig);
       await window.electronAPI.startBroadcast({
         ip: localIP,
@@ -242,7 +248,7 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
 
   const handleLaunchCSGO = async () => {
     try {
-      await window.electronAPI.launchCSGO(['-insecure', '-novid', '-console']);
+      await window.electronAPI.launchSteamGame('steam://rungameid/4465480');
       addToast('CSGO launched', 'success');
     } catch (err) {
       addToast(err.message, 'error');
@@ -251,7 +257,8 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
 
   const handleConnectToServer = async (ip, port) => {
     try {
-      await window.electronAPI.launchCSGO(['-insecure', '-novid', '-console', '+connect', `${ip}:${port}`]);
+      const steamUrl = `steam://rungameid/4465480//+connect%20${encodeURIComponent(`${ip}:${port}`)}`;
+      await window.electronAPI.launchSteamGame(steamUrl);
       addToast('Connecting to server', 'success');
     } catch (err) {
       addToast(err.message, 'error');
@@ -321,7 +328,11 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
                         onChange={(e) => updateServerConfig({ map: e.target.value })}
                         className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
                       >
-                        {maps.map((map) => <option key={map} value={map}>{map}</option>)}
+                        {mapGroups.map((group) => (
+                          <optgroup key={group.label} label={group.label}>
+                            {group.maps.map((map) => <option key={map} value={map}>{map}</option>)}
+                          </optgroup>
+                        ))}
                       </select>
                     </div>
 
