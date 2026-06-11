@@ -2,7 +2,7 @@ const { exec, spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
-const dgram = require('dgram');
+const WebSocket = require('ws');
 
 const STEAM_DIR = 'C:\\Program Files (x86)\\Steam';
 const STEAMCMD_DIR = path.join(STEAM_DIR, 'steamcmd');
@@ -416,100 +416,49 @@ r_shadowlod 0
   return { success: true };
 }
 
-const BROADCAST_PORT = 28178;
-const BROADCAST_INTERVAL_MS = 3000;
-
-let broadcastInterval = null;
-let broadcastSocket = null;
-let listenSocket = null;
-
-function startBroadcast(serverInfo) {
-  if (broadcastSocket) stopBroadcast();
-
-  const payload = JSON.stringify({
-    type: 'CSGO_MOD_MANAGER_SERVER',
-    ip: serverInfo.ip,
-    port: serverInfo.port,
-    hostname: serverInfo.hostname,
-    map: serverInfo.map,
-    gameMode: serverInfo.gameMode,
-    players: serverInfo.players || 0
-  });
-
-  broadcastSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-
-  broadcastSocket.on('error', (err) => {
-    console.error('[lanServer] broadcast error:', err.message);
-  });
-
-  broadcastSocket.bind(() => {
-    broadcastSocket.setBroadcast(true);
-
-    broadcastInterval = setInterval(() => {
-      try {
-        broadcastSocket.send(payload, 0, payload.length, BROADCAST_PORT, '255.255.255.255');
-      } catch (err) {
-        console.error('[lanServer] broadcast send (255.255.255.255) error:', err.message);
-      }
-
-      try {
-        broadcastSocket.send(payload, 0, payload.length, BROADCAST_PORT, '127.0.0.1');
-      } catch (err) {
-        console.error('[lanServer] broadcast send (127.0.0.1) error:', err.message);
-      }
-    }, BROADCAST_INTERVAL_MS);
-  });
-}
-
-function stopBroadcast() {
-  if (broadcastInterval) {
-    clearInterval(broadcastInterval);
-    broadcastInterval = null;
-  }
-  if (broadcastSocket) {
-    try { broadcastSocket.close(); } catch (err) { console.error('[lanServer] close broadcast error:', err.message); }
-    broadcastSocket = null;
-  }
-}
+let scanInterval = null;
+let scanAbort = false;
 
 function startListening(onServerFound) {
-  if (listenSocket) {
-    console.warn('[lanServer] already listening, ignoring duplicate start');
-    return;
-  }
+  if (scanInterval) return;
+  scanAbort = false;
 
-  exec(
-    `netsh advfirewall firewall add rule name="CSGO Mod Manager Discovery ${BROADCAST_PORT}" dir=in action=allow protocol=UDP localport=${BROADCAST_PORT} >nul 2>&1`,
-    () => {}
-  );
+  const scan = () => {
+    if (scanAbort) return;
+    const localIP = getLocalLANIP();
+    const parts = localIP.split('.');
+    if (parts.length !== 4) return;
+    const subnet = parts.slice(0, 3).join('.') + '.';
 
-  listenSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+    for (let i = 1; i <= 254; i++) {
+      const ip = subnet + i;
+      if (ip === localIP) continue;
+      const ws = new WebSocket(`ws://${ip}:27016`);
+      ws.on('message', (data) => {
+        try {
+          const server = JSON.parse(data.toString());
+          if (server.type === 'CSGO_MOD_MANAGER_SERVER') {
+            onServerFound(server);
+          }
+        } catch {}
+        ws.close();
+      });
+      ws.on('error', () => {});
+      setTimeout(() => {
+        if (ws.readyState !== WebSocket.CLOSED) ws.close();
+      }, 1000);
+    }
+  };
 
-  listenSocket.on('error', (err) => {
-    console.error('[lanServer] listen error:', err.message);
-  });
-
-  listenSocket.on('message', (msg) => {
-    const str = msg.toString();
-    if (str.charCodeAt(0) !== 123) return;
-    try {
-      const data = JSON.parse(str);
-      if (data.type === 'CSGO_MOD_MANAGER_SERVER') {
-        console.log('[lanServer] server found:', data.hostname);
-        onServerFound(data);
-      }
-    } catch {}
-  });
-
-  listenSocket.bind(BROADCAST_PORT, () => {
-    console.log('[lanServer] listening on port', BROADCAST_PORT);
-  });
+  scan();
+  scanInterval = setInterval(scan, 5000);
 }
 
 function stopListening() {
-  if (listenSocket) {
-    try { listenSocket.close(); } catch (err) { console.error('[lanServer] close listen error:', err.message); }
-    listenSocket = null;
+  scanAbort = true;
+  if (scanInterval) {
+    clearInterval(scanInterval);
+    scanInterval = null;
   }
 }
 
@@ -523,8 +472,6 @@ module.exports = {
   stopServer,
   getServerStatus,
   launchCSGO,
-  startBroadcast,
-  stopBroadcast,
   startListening,
   stopListening
 };

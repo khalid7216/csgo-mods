@@ -1,10 +1,11 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const WebSocket = require('ws');
 const { detectCSGOPath, validateCSGOPath, saveCSGOPath, loadCSGOPath } = require('../utils/csgoPath');
 const { getGameBananaMaps, getGameBananaSkins, downloadMap, downloadSkin, installMap, getInstalledMods, removeMod } = require('../utils/modManager');
 const { createVMT, createVPK, installSkin } = require('../utils/skinManager');
-const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO, installDedicatedServer, findDedicatedServer, startBroadcast, stopBroadcast, startListening, stopListening } = require('../utils/lanServer');
+const { getLocalIP, startServer, stopServer, getServerStatus, launchCSGO, installDedicatedServer, findDedicatedServer, startListening, stopListening } = require('../utils/lanServer');
 const { fetchPlayerStats, fetchPlayerProfile, parseStats, getCachedStats } = require('../utils/statsParser');
 const { DEFAULT_CONFIG, DEFAULT_MODS, DEFAULT_STATS, ensureCacheFile, getCachePath } = require('../utils/appPaths');
 const { createApiServer } = require('../platform/apiServer');
@@ -396,13 +397,31 @@ ipcMain.handle('launch-steam-game', (_, steamUrl) => {
   return shell.openExternal(steamUrl);
 });
 
-ipcMain.handle('start-broadcast', (_, serverInfo) => {
-  startBroadcast(serverInfo);
+let wss = null;
+let discoveryData = null;
+
+ipcMain.handle('start-broadcast', (e, serverInfo) => {
+  if (wss) {
+    wss.close();
+    wss = null;
+  }
+  discoveryData = serverInfo;
+  wss = new WebSocket.Server({ port: 27016 });
+  wss.on('connection', (ws) => {
+    ws.send(JSON.stringify({
+      type: 'CSGO_MOD_MANAGER_SERVER',
+      ...discoveryData
+    }));
+  });
   return true;
 });
 
 ipcMain.handle('stop-broadcast', () => {
-  stopBroadcast();
+  if (wss) {
+    wss.close();
+    wss = null;
+  }
+  discoveryData = null;
   return true;
 });
 
