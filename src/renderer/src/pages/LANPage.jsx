@@ -101,45 +101,6 @@ function ToggleRow({ title, caption, checked, onChange }) {
   );
 }
 
-function ManualConnect({ handleConnectToServer, addToast }) {
-  const [manualIP, setManualIP] = useState('');
-  const [manualPort, setManualPort] = useState('27015');
-  const handleConnect = async () => {
-    if (!manualIP) return addToast('Enter server IP', 'error');
-    await handleConnectToServer(manualIP, manualPort);
-  };
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Server className="h-4 w-4 text-primary" />
-          Manual Connect
-        </CardTitle>
-        <CardDescription>Enter the admin IP:Port if auto-discovery is not working.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex gap-2">
-          <Input
-            placeholder="192.168.1.100"
-            value={manualIP}
-            onChange={(e) => setManualIP(e.target.value)}
-          />
-          <Input
-            placeholder="27015"
-            value={manualPort}
-            onChange={(e) => setManualPort(e.target.value)}
-            className="w-24"
-          />
-          <Button onClick={handleConnect} variant="success" disabled={!manualIP}>
-            <Swords className="h-4 w-4" />
-            Connect
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 export default function LANPage({ config, setConfig, addToast, user, discoveredServer, setDiscoveredServer }) {
   const commandsRef = useRef(null);
   const [localIP, setLocalIP] = useState('');
@@ -263,8 +224,6 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
     setInstalling(false);
   };
 
-  const [firewallOk, setFirewallOk] = useState(true);
-
   const handleStartServer = async () => {
     const parsedConfig = validateServerConfig();
     if (!parsedConfig) return;
@@ -272,17 +231,13 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
     setLoading(true);
     try {
       await window.electronAPI.startServer(parsedConfig);
-      const result = await window.electronAPI.startBroadcast({
+      await window.electronAPI.startBroadcast({
         ip: localIP,
         port: parsedConfig.port,
         hostname: parsedConfig.hostname,
         map: parsedConfig.map,
         gameMode: parsedConfig.gameMode
       });
-      setFirewallOk(result.firewallOk);
-      if (!result.firewallOk) {
-        addToast('Firewall rule not applied. Other PCs may not see the server. Add port 27016 TCP in Windows Firewall.', 'warning');
-      }
       setServerRunning(true);
       addToast('Server started', 'success');
     } catch (err) {
@@ -340,11 +295,6 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
               <p className="mt-1 text-sm text-muted-foreground">
                 {serverConfig.hostname} on {serverConfig.map}
               </p>
-              {serverRunning && !firewallOk && (
-                <p className="mt-2 text-xs text-yellow-400">
-                  Players cannot connect? Add port 27016 TCP in Windows Firewall manually.
-                </p>
-              )}
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -620,8 +570,6 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
               </CardContent>
             </Card>
           )}
-
-          <ManualConnect handleConnectToServer={handleConnectToServer} addToast={addToast} />
         </>
       )}
     </div>
