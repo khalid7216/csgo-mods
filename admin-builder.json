@@ -1,0 +1,26 @@
+{
+  "appId": "com.csgomodmanager.admin",
+  "productName": "CSGO Mod Manager Admin",
+  "directories": {
+    "output": "dist-admin"
+  },
+  "files": [
+    "src/**/*",
+    "public/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": ["nsis"],
+    "icon": "public/icon.ico",
+    "signAndEditExecutable": false,
+    "requestedExecutionLevel": "requireAdministrator"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "runAfterFinish": true,
+    "perMachine": true,
+    "installerIcon": "public/icon.ico"
+  },
+  "asar": true
+}

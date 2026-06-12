@@ -12,6 +12,7 @@
     "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
     "build": "npm run build:installer",
     "build:admin": "vite build --config src/admin-web/vite.config.js",
+    "build:admin-client": "cd src/renderer && vite build && cd ../.. && electron-builder --win nsis --publish=never --config=admin-builder.json",
     "build:installer": "cd src/renderer && vite build && cd ../.. && electron-builder --win nsis --publish=never",
     "build:platform": "npm run build:react && npm run build:admin",
     "build:react": "cd src/renderer && vite build",
