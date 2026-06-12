@@ -1,4 +1,5 @@
 const { exec, spawn } = require('child_process');
+const https = require('https');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -107,6 +108,38 @@ function openFirewallPort(port = 27015) {
   });
 }
 
+function downloadSteamCMD(onOutput) {
+  return new Promise((resolve, reject) => {
+    const zipPath = path.join(STEAMCMD_DIR, 'steamcmd.zip');
+    if (onOutput) onOutput('Downloading SteamCMD (6 MB)...\n');
+    const file = fs.createWriteStream(zipPath);
+    https.get('https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip', (res) => {
+      const total = parseInt(res.headers['content-length'] || '0', 10);
+      let downloaded = 0;
+      res.on('data', (chunk) => {
+        downloaded += chunk.length;
+        if (onOutput && total) {
+          const pct = Math.round((downloaded / total) * 100);
+          onOutput(`\rDownloading SteamCMD... ${pct}%`);
+        }
+      });
+      res.pipe(file);
+      file.on('finish', () => {
+        file.close();
+        if (onOutput) onOutput('\nExtracting SteamCMD...\n');
+        exec(`powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${STEAMCMD_DIR}' -Force"`, (err) => {
+          try { fs.unlinkSync(zipPath); } catch {}
+          if (err) reject(new Error('Failed to extract SteamCMD: ' + err.message));
+          else resolve();
+        });
+      });
+    }).on('error', (err) => {
+      try { fs.unlinkSync(zipPath); } catch {}
+      reject(new Error('Failed to download SteamCMD: ' + err.message));
+    });
+  });
+}
+
 async function installDedicatedServer(onOutput) {
   if (!fs.existsSync(STEAMCMD_DIR)) {
     fs.mkdirSync(STEAMCMD_DIR, { recursive: true });
@@ -114,7 +147,7 @@ async function installDedicatedServer(onOutput) {
 
   const steamcmdExe = path.join(STEAMCMD_DIR, 'steamcmd.exe');
   if (!fs.existsSync(steamcmdExe)) {
-    throw new Error('SteamCMD not found. Download from https://developer.valvesoftware.com/wiki/SteamCMD and save to ' + STEAMCMD_DIR);
+    await downloadSteamCMD(onOutput);
   }
 
   const installDir = path.join(STEAMCMD_DIR, 'csgo_ds');
@@ -127,7 +160,7 @@ quit`;
   fs.writeFileSync(scriptPath, installScript);
 
   return new Promise((resolve, reject) => {
-    if (onOutput) onOutput('Installing CSGO Dedicated Server (this may take a while)...\n');
+    if (onOutput) onOutput('\nInstalling CSGO Dedicated Server (5-15 GB, this may take a while)...\n');
     const proc = spawn(steamcmdExe, ['+runscript', scriptPath], { stdio: ['ignore', 'pipe', 'pipe'] });
     proc.stdout.on('data', (data) => {
       if (onOutput) onOutput(data);
