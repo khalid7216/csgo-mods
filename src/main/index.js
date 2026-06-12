@@ -1,7 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const { exec } = require('child_process');
 const WebSocket = require('ws');
 const { detectCSGOPath, validateCSGOPath, saveCSGOPath, loadCSGOPath } = require('../utils/csgoPath');
@@ -411,24 +410,16 @@ function addFirewallRule() {
         return resolve(true);
       }
       console.log('[firewall] rule not found, requesting UAC elevation...');
-      const tmpFile = path.join(os.tmpdir(), 'fw-rule-' + Date.now() + '.vbs');
-      const vbsContent = `CreateObject("Shell.Application").ShellExecute "netsh", "advfirewall firewall add rule name=""${ruleName}"" dir=in action=allow protocol=TCP localport=27016", "", "runas", 0`;
-      try {
-        fs.writeFileSync(tmpFile, vbsContent, 'utf-8');
-        exec(`cscript //Nologo "${tmpFile}"`, { timeout: 30000 }, (e) => {
-          try { fs.unlinkSync(tmpFile); } catch {}
-          if (e) {
-            console.log('[firewall] UAC denied or failed:', e.message);
-            resolve(false);
-          } else {
-            console.log('[firewall] rule added via UAC');
-            resolve(true);
-          }
-        });
-      } catch (e) {
-        console.log('[firewall] failed to write vbs:', e.message);
-        resolve(false);
-      }
+      const psCmd = `Start-Process -FilePath netsh -ArgumentList 'advfirewall','firewall','add','rule','name=${ruleName}','dir=in','action=allow','protocol=TCP','localport=27016' -Verb RunAs -Wait`;
+      exec(`powershell -Command "${psCmd}"`, { timeout: 60000 }, (e) => {
+        if (e) {
+          console.log('[firewall] UAC denied or failed:', e.message);
+          resolve(false);
+        } else {
+          console.log('[firewall] rule added via UAC');
+          resolve(true);
+        }
+      });
     });
   });
 }
