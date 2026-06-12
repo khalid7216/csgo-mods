@@ -133,6 +133,10 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
       if (!cancelled) setDiscoveredServer(data);
     });
 
+    if (!isAdmin) {
+      window.electronAPI.startListening();
+    }
+
     window.electronAPI.findDedicatedServer().then((installed) => {
       if (!cancelled) setDsInstalled(installed);
     });
@@ -145,6 +149,9 @@ export default function LANPage({ config, setConfig, addToast, user, discoveredS
     return () => {
       cancelled = true;
       unsubServerFound();
+      if (!isAdmin) {
+        window.electronAPI.stopListening();
+      }
     };
   }, []);
 

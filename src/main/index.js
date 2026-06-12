@@ -406,13 +406,21 @@ ipcMain.handle('start-broadcast', (e, serverInfo) => {
     wss = null;
   }
   discoveryData = serverInfo;
-  wss = new WebSocket.Server({ port: 27016 });
-  wss.on('connection', (ws) => {
-    ws.send(JSON.stringify({
-      type: 'CSGO_MOD_MANAGER_SERVER',
-      ...discoveryData
-    }));
-  });
+  exec('netsh advfirewall firewall add rule name="CSGO WS Discovery 27016" dir=in action=allow protocol=TCP localport=27016 >nul 2>&1', () => {});
+  try {
+    wss = new WebSocket.Server({ port: 27016 });
+    wss.on('connection', (ws) => {
+      ws.send(JSON.stringify({
+        type: 'CSGO_MOD_MANAGER_SERVER',
+        ...discoveryData
+      }));
+    });
+    wss.on('error', (err) => {
+      console.error('[ws-server] error:', err.message);
+    });
+  } catch (err) {
+    console.error('[ws-server] failed to start:', err.message);
+  }
   return true;
 });
 

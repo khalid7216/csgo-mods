@@ -430,6 +430,7 @@ function startListening(onServerFound) {
     if (parts.length !== 4) return;
     const subnet = parts.slice(0, 3).join('.') + '.';
 
+    let found = false;
     for (let i = 1; i <= 254; i++) {
       const ip = subnet + i;
       if (ip === localIP) continue;
@@ -438,16 +439,21 @@ function startListening(onServerFound) {
         try {
           const server = JSON.parse(data.toString());
           if (server.type === 'CSGO_MOD_MANAGER_SERVER') {
+            found = true;
             onServerFound(server);
           }
         } catch {}
         ws.close();
       });
       ws.on('error', () => {});
+      ws.on('open', () => {
+        console.log('[lanScan] connected to', ip);
+      });
       setTimeout(() => {
         if (ws.readyState !== WebSocket.CLOSED) ws.close();
-      }, 1000);
+      }, 2000);
     }
+    console.log('[lanScan] scan complete, found:', found);
   };
 
   scan();
