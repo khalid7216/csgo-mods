@@ -82,7 +82,7 @@ function createWindow() {
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
           "img-src 'self' data: https: blob:; " +
           "media-src 'self' https://res.cloudinary.com; " +
-          "connect-src 'self' http://localhost:4180 http://127.0.0.1:4180 https://api.gamebanana.com https://gamebanana.com https://api.steampowered.com https://res.cloudinary.com; " +
+          "connect-src 'self' http://localhost:4180 http://127.0.0.1:4180 https://api.gamebanana.com https://gamebanana.com https://api.steampowered.com https://res.cloudinary.com ws://*:27016; " +
           "font-src 'self' https://fonts.gstatic.com;"
         ]
       }
