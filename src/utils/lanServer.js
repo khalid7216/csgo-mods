@@ -418,46 +418,72 @@ r_shadowlod 0
 
 let scanInterval = null;
 let scanAbort = false;
+let serverDiscovered = false;
 
 function startListening(onServerFound) {
   if (scanInterval) return;
   scanAbort = false;
+  serverDiscovered = false;
 
   const scan = () => {
-    if (scanAbort) return;
+    if (scanAbort || serverDiscovered) return;
     const localIP = getLocalLANIP();
     const parts = localIP.split('.');
     if (parts.length !== 4) return;
     const subnet = parts.slice(0, 3).join('.') + '.';
 
-    let found = false;
+    console.log('[lanScan] scanning', subnet + '0/24 ...');
+    let pending = 0;
+    const WS_TIMEOUT = 3000;
+
     for (let i = 1; i <= 254; i++) {
+      if (serverDiscovered) break;
       const ip = subnet + i;
       if (ip === localIP) continue;
+      pending++;
       const ws = new WebSocket(`ws://${ip}:27016`);
+      let settled = false;
+
+      const cleanup = () => {
+        if (settled) return;
+        settled = true;
+        pending--;
+        if (ws.readyState !== WebSocket.CLOSED) ws.close();
+        if (pending === 0 && !serverDiscovered) {
+          console.log('[lanScan] scan complete, no server found');
+        }
+      };
+
       ws.on('message', (data) => {
         try {
           const server = JSON.parse(data.toString());
           if (server.type === 'CSGO_MOD_MANAGER_SERVER') {
-            found = true;
+            serverDiscovered = true;
+            console.log('[lanScan] SERVER FOUND at', ip);
             onServerFound(server);
+            stopListening();
           }
         } catch {}
-        ws.close();
+        cleanup();
       });
-      ws.on('error', () => {});
       ws.on('open', () => {
         console.log('[lanScan] connected to', ip);
       });
-      setTimeout(() => {
-        if (ws.readyState !== WebSocket.CLOSED) ws.close();
-      }, 2000);
+      ws.on('error', () => cleanup());
+      setTimeout(cleanup, WS_TIMEOUT);
     }
-    console.log('[lanScan] scan complete, found:', found);
   };
 
   scan();
   scanInterval = setInterval(scan, 5000);
+}
+
+function stopListening() {
+  scanAbort = true;
+  if (scanInterval) {
+    clearInterval(scanInterval);
+    scanInterval = null;
+  }
 }
 
 function stopListening() {

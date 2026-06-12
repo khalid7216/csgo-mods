@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { exec } = require('child_process');
 const WebSocket = require('ws');
 const { detectCSGOPath, validateCSGOPath, saveCSGOPath, loadCSGOPath } = require('../utils/csgoPath');
 const { getGameBananaMaps, getGameBananaSkins, downloadMap, downloadSkin, installMap, getInstalledMods, removeMod } = require('../utils/modManager');
@@ -400,13 +401,43 @@ ipcMain.handle('launch-steam-game', (_, steamUrl) => {
 let wss = null;
 let discoveryData = null;
 
-ipcMain.handle('start-broadcast', (e, serverInfo) => {
+function addFirewallRule() {
+  return new Promise((resolve) => {
+    const ruleName = 'CSGO WS Discovery 27016';
+    exec(`netsh advfirewall firewall show rule name="${ruleName}"`, (err, stdout) => {
+      if (!err && stdout.includes(ruleName)) {
+        console.log('[firewall] rule already exists');
+        return resolve(true);
+      }
+      exec(`netsh advfirewall firewall add rule name="${ruleName}" dir=in action=allow protocol=TCP localport=27016`, (err2) => {
+        if (!err2) {
+          console.log('[firewall] rule added');
+          return resolve(true);
+        }
+        console.log('[firewall] direct add failed, trying UAC elevation...');
+        // Retry with admin elevation (pops UAC dialog)
+        const script = `Start-Process -FilePath netsh -ArgumentList 'advfirewall','firewall','add','rule','name=${ruleName}','dir=in','action=allow','protocol=TCP','localport=27016' -Verb RunAs -Wait -WindowStyle Hidden`;
+        exec(`powershell -Command "${script}"`, { timeout: 60000 }, (err3) => {
+          if (err3) {
+            console.log('[firewall] elevation also failed:', err3.message);
+            resolve(false);
+          } else {
+            console.log('[firewall] rule added via UAC');
+            resolve(true);
+          }
+        });
+      });
+    });
+  });
+}
+
+ipcMain.handle('start-broadcast', async (e, serverInfo) => {
   if (wss) {
     wss.close();
     wss = null;
   }
   discoveryData = serverInfo;
-  exec('netsh advfirewall firewall add rule name="CSGO WS Discovery 27016" dir=in action=allow protocol=TCP localport=27016 >nul 2>&1', () => {});
+  const firewallOk = await addFirewallRule();
   try {
     wss = new WebSocket.Server({ port: 27016 });
     wss.on('connection', (ws) => {
@@ -421,7 +452,8 @@ ipcMain.handle('start-broadcast', (e, serverInfo) => {
   } catch (err) {
     console.error('[ws-server] failed to start:', err.message);
   }
-  return true;
+  console.log('[ws-server] started on port 27016');
+  return { ok: true, firewallOk, adminIP: serverInfo.ip };
 });
 
 ipcMain.handle('stop-broadcast', () => {
